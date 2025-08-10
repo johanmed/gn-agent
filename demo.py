@@ -1,266 +1,211 @@
 """
 This scripts runs through a demo on the use of RAG system for genomic analysis
-
+Reasoning based on tree-of-thought
 Embedding model = Qwen/Qwen3-Embedding-0.6B
-
-Generative model = Qwen/Qwen2.5-72B-Instruct-Q4_K_M
-
+Generative model = calme-3.2-instruct-78b-Q4_K_S
 Summary model = Phi-3-mini-4k-instruct-fp16
-
-Requirements: langchain, llama-cpp-python (see tapas_env for full details)
+Requirements: langchain, llama-cpp-python, chroma_db
+python rag_script.py <corpus-text.txt> <generative-model.gguf>
 """
-
-
-# Load document and process
-
-texts =''
-
-with open('document.txt') as file:
-    
-    read = file.read()
-    
-    texts = texts + read
-    
-
-sentences = texts.split('\n')[:200000]
-
-print('\nDocument ready!')
-
-
-# Load quantized version of the generative model
-
-from langchain_community.llms import LlamaCpp
-
-gener_model = LlamaCpp(
-    model_path = '../Qwen2.5-72B-Instruct-Q4_K_M.gguf',
-    max_tokens = 1000,
-    n_ctx = 8192, 
-    seed = 2025,
-    temperature = 0,
-    verbose = False)
-
-
-print('\nGenerative model loaded!')
-
-
-# Load embedding model from hugging face
-
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
-embed_model = HuggingFaceEmbeddings(
-    model_name = 'Qwen/Qwen3-Embedding-0.6B')
-
-
-print('\nEmbedding model loaded!')
-
-
-# Set up or load vector database using embedding model
-
-from langchain_community.vectorstores import FAISS
-
+import click
 import os
+import sys
+
+from pathlib import Path
+from dataclasses import dataclass, field
+from typing import Any
+
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains.history_aware_retriever import create_history_aware_retriever
+from langchain.chains.retrieval import create_retrieval_chain
+from langchain.memory import ConversationSummaryBufferMemory
+from langchain.retrievers.ensemble import EnsembleRetriever
+from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_community.llms import LlamaCpp
+from langchain_community.retrievers import BM25Retriever
+from langchain_community.vectorstores import Chroma
+from langchain_core.prompts import PromptTemplate
 
 from tqdm import tqdm
 
 
-db_path = 'vector_db'
+CORPUS_TEXT = "/home/bonfacem/models/corpus.txt"
+# XXX: Can we pickle this to make load times faster?
+# XXX: Remove hard-coded paths.
+
+GENERATIVE_MODEL = LlamaCpp(
+    model_path="/home/bonfacem/models/calme-3.2-instruct-78b-Q4_K_S.gguf",
+    max_tokens=1_000,
+    n_ctx=32_768,
+    seed=2_025,
+    temperature=0,
+    verbose=False)
+
+# XXX: Can we pickle this to make load times faster?
+# XXX: Remove hard-coded paths.
+SUMMARY_MODEL = LlamaCpp(
+    model_path='/home/bonfacem/models/Phi-3-mini-4k-instruct-fp16.gguf',
+    max_tokens=500,
+    n_ctx=4096,
+    seed=2025,
+    temperature=0,
+    verbose=False)
 
 
-def build_load_db(sentences, embed_model, db_path = db_path, chunk_size=500):
-	
-	if os.path.exists(db_path):
-		
-		print('\nLoading FAISS vector database from disk...')
-
-		db = FAISS.load_local(
-			db_path, 
-			embed_model, 
-			allow_dangerous_deserialization = True)
-		
-		return db
-	
-	else:
-
-		print('\nBuilding FAISS vector database and saving to disk...')
-		
-		db = None
-
-		for i in tqdm(range(0, len(sentences), chunk_size)):
-	
-			chunk = sentences[i:i+chunk_size]
-
-			if db is None:
-			
-				db = FAISS.from_texts(chunk, embed_model) # initialize
-	
-			else:
-
-				db.add_texts(chunk) # add new chunk
-		
-		db.save_local(db_path) # save to disk at the end
-	
-		return db
-
-
-
-db = build_load_db(sentences, embed_model)
-
-print('\nAccess to vector database confirmed!')
-
-
-# Set up RAG prompt
-
-from langchain_core.prompts import PromptTemplate
-
-rag_template = """
+# Our templates for our simple RAG system
+RAG_TEMPLATE = """
 <s><|user|>
-
 Relevant information:
 {context}
-
 History:
 {chat_history}
-
-Provide a concise answer to the question below. Check first in the history above. If you do not find the answer to the question, use the relevant information above. Do not add any external information. 
-
-Think with me step-by-step.
-
-Start by selecting only use cases relevant to the question. Explore different reasoning by emulating a conversation between 3 experts. All experts will write down 1 step of their thinking, then share with the group. Then all experts will go on to the next step and so on. If any expert realizes his wrong at any point, he should leave the conversation.
-
+Provide a concise answer to the question below. Check first in the history above. If you do not find the answer to the question, use the relevant information above. Do not add any external information.
+Explore different reasoning by emulating a conversation between 3 experts. All experts will write down 1 step of their thinking, then share with the group. Then all experts will go on to the next step and so on. If any expert realizes his wrong at any point, he should leave the conversation.
 The question is:
-{question}
+{input}
 <|end|>
 <|assistant|>
 """
 
-rag_prompt = PromptTemplate(
-    input_variables = ['context', 'question', 'summary'],
-    template = rag_template)
-
-
-# Set up retriever prompt
-
-retriever_template = """
+RETRIEVER_TEMPLATE = """
 <s><|user|>
-Given the following conversation, generate a search query to retrieve relevant documents. 
-
+Given the following conversation, generate a search query to retrieve relevant documents.
 Conversation:
 {input}
 <|end|>
 <|assistant|>
 """
 
-
-retriever_prompt = PromptTemplate(
-	input_variables = ['input'],
-	template =retriever_template)
- 
-
-# Set up summary prompt for memory propagation
-
-summary_template = """
+SUMMARY_TEMPLATE = """
 <s><|user|>
-
 Summarize the conversations and update with the new lines. Be as concise as possible without loosing key information.
-
 Current summary:
 {summary}
-
 New lines of conversation:
 {new_lines}
-
 New summary:<|end|>
 <|assistant|>
 """
 
-summary_prompt = PromptTemplate(
-    input_variables = ['summary', 'new_lines'], 
-    template = summary_template)
-    
-    
-    
-# Perform conversation summary using a smaller model (Phi-3)
 
-summary_model = LlamaCpp(
-    model_path = '../Phi-3-mini-4k-instruct-fp16.gguf',
-    max_tokens = 500,
-    n_ctx = 2048,
-    seed = 2025,
-    temperature = 0,
-    verbose = False)
-
-from langchain.memory import ConversationSummaryBufferMemory
-
-memory = ConversationSummaryBufferMemory(
-    llm = summary_model,
-    memory_key = 'chat_history',
-    input_key = 'question',
-    output_key = 'answer',
-    prompt = summary_prompt,
-    max_token_limit = 1000,
-    return_messages = True)
-    
-    
-    
-
-# Define RAG pipeline
+def corpus_to_sentences(file_path: str) -> list:
+    """Convert a corpus into an array of sentences.
+    KLUDGE: XXXX: Corpus of text should be RDF eventually.  This here
+    is for testing.
+    """
+    if not Path(file_path).exists():
+        sys.exit(1)
+    with open(file_path, "r", encoding="utf-8") as stream:
+        return stream.read().split("\n")[:100_000]
 
 
-from langchain.chains.history_aware_retriever import create_history_aware_retriever
+@dataclass
+class GNQNA_RAG():
+    corpus: str
+    rag_template: str
+    retriever_template: str
+    summary_template: str
+    memory: Any = field(init=False)
+    retrieval_chain: Any = field(init=False)
+    ensemble_retriever: Any = field(init=False)
+    sentences: list = field(init=False)
+    rag_prompt: Any = field(init=False)
+    retriever_prompt: Any = field(init=False)
+    summary_prompt: Any = field(init=False)
+    chroma_db: Any = field(init=False)
+
+    def __post_init__(self):
+        self.sentences = corpus_to_sentences(self.corpus)
+        self.chroma_db = self.set_chroma_db(
+            sentences=self.sentences,
+            embed_model=HuggingFaceEmbeddings(
+                model_name="Qwen/Qwen3-Embedding-0.6B"),
+            db_path='/home/bonfacem/tmp/chroma_db'
+        )
+
+        # Init'ing the ensemble retriever
+        bm25_retriever = BM25Retriever.from_texts(self.sentences)
+        bm25_retriever.k = 20   # KLUDGE: Explain why the magic number 20
+        self.ensemble_retriever = EnsembleRetriever(
+            retrievers=[self.chroma_db.as_retriever(), bm25_retriever],
+            weights=[0.3, 0.7])  # KLUDGE: Explain why the magic array
+
+        # Init'ing the prompts
+        self.rag_prompt = PromptTemplate(
+            input_variables=['context', 'question', 'summary'],
+            template=self.rag_template)
+        self.retriever_prompt = PromptTemplate(
+            input_variables=['input'],
+            template=self.retriever_template)
+        self.summary_prompt = PromptTemplate(
+            input_variables=['input'],
+            template=self.summary_template)
+
+        # Building the modes.
+        # KLUDGE: Consider pickling as a cache mechanism
+        self.memory = ConversationSummaryBufferMemory(
+            llm=SUMMARY_MODEL,
+            memory_key='chat_history',
+            input_key='input',
+            output_key='answer',
+            prompt=self.summary_prompt,
+            max_token_limit=1_000,
+            return_messages=True)
+        self.retrieval_chain = create_retrieval_chain(
+            combine_docs_chain=create_stuff_documents_chain(
+                llm=GENERATIVE_MODEL,
+                prompt=self.rag_prompt),
+            retriever=create_history_aware_retriever(
+                retriever=self.ensemble_retriever,
+                llm=GENERATIVE_MODEL,
+                prompt=self.retriever_prompt))
+
+    def set_chroma_db(self, sentences: list,
+                      embed_model: Any, db_path: str,
+                      chunk_size: int = 500) -> Any:
+        match Path(db_path).exists():
+            case True:
+                db = Chroma(
+                    persist_directory=db_path,
+                    embedding_function=embed_model
+                )
+                return db
+            case _:
+                for i in tqdm(range(0, len(sentences), chunk_size)):
+                    chunk = sentences[i:i+chunk_size]
+                    db = Chroma.from_texts(
+                        texts=chunk,
+                        embedding=embed_model,
+                        persist_directory=db_path)
+                    db.persist()
+                return db
+
+    def ask_question(self, question: str):
+        memory_var = self.memory.load_memory_variables({})
+        chat_history = memory_var.get('chat_history', '')
+        result = self.retrieval_chain.invoke(
+            {'input': question,
+             'chat_history': chat_history})
+        answer = result.get("answer")
+        citations = result.get("context")
+        self.memory.save_context(
+            {'input': question},
+            {'answer': answer})
+        return {
+            "question": question,
+            "answer": answer,
+            "citations": citations,
+        }
 
 
-history_aware_retriever = create_history_aware_retriever(
-	retriever = db.as_retriever(),
-	llm = gener_model,
-	prompt = retriever_prompt)
+rag = GNQNA_RAG(
+    corpus=CORPUS_TEXT,
+    rag_template=RAG_TEMPLATE,
+    retriever_template=RETRIEVER_TEMPLATE,
+    summary_template=SUMMARY_TEMPLATE,
+)
 
 
-from langchain.chains.combine_documents import create_stuff_documents_chain
+answer = rag.ask_question("Two traits have similar lod values at a specific position when the computation of the difference between the lod values gives a result less or equal to 0.5. Using that information, identify 2 traits that have similar lod values on chromosome 1 position 3010274. If any pair of traits does not have similar lod values at that position, try another pair until you exhaust all the possibilities.")
 
-combine_docs_chain = create_stuff_documents_chain(
-	llm = gener_model,
-	prompt = rag_prompt)
-
-
-from langchain.chains.retrieval import create_retrieval_chain
-
-retrieval_chain = create_retrieval_chain(
-    combine_docs_chain = combine_docs_chain,
-    retriever = history_aware_retriever)
-    
-print('\nPipeline ready!')
-
-
-# Get generated answer and citations
-
-
-def rag(question, retrieval_chain = retrieval_chain, memory = memory):
-	
-	print('\nQuery execution...')
-	
-	# Get memory content
-
-	memory_var = memory.load_memory_variables({})
-
-	chat_history = memory_var.get('chat_history', '')
-
-	# Execute query
-
-	result = retrieval_chain.invoke(
-		{'question': question,
-		'input': question, 
-		'chat_history': chat_history})
-
-	print('\n Generated_text:\n', result['answer'])
-
-	print('\n Citations:\n', result['context'])
-
-	# Update memory
-
-	memory.save_context(
-		{'question': question},
-		{'answer': result['answer']})
-
-
-
-rag('What is the lod for trait leptin receptor EPFLMouseLiverCDEx0413 at position 100?')
+print(answer)
