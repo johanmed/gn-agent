@@ -89,43 +89,30 @@ New summary:<|end|>
 """
 
 
-def corpus_to_sentences(file_path: str) -> list:
-    """Convert a corpus into an array of sentences.
-    KLUDGE: XXXX: Corpus of text should be RDF eventually.  This here
-    is for testing.
-    """
-    if not Path(file_path).exists():
-        sys.exit(1)
-    with open(file_path, "r", encoding="utf-8") as stream:
-        return stream.read().split("\n")[:100_000]
-
-
 @dataclass
 class GNQNA_RAG():
-    corpus: str
+    corpus: list
     rag_template: str
     retriever_template: str
     summary_template: str
     memory: Any = field(init=False)
     retrieval_chain: Any = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    sentences: list = field(init=False)
     rag_prompt: Any = field(init=False)
     retriever_prompt: Any = field(init=False)
     summary_prompt: Any = field(init=False)
     chroma_db: Any = field(init=False)
 
     def __post_init__(self):
-        self.sentences = corpus_to_sentences(self.corpus)
         self.chroma_db = self.set_chroma_db(
-            sentences=self.sentences,
+            corpus=self.corpus,
             embed_model=HuggingFaceEmbeddings(
                 model_name="Qwen/Qwen3-Embedding-0.6B"),
             db_path='/home/bonfacem/tmp/chroma_db'
         )
 
         # Init'ing the ensemble retriever
-        bm25_retriever = BM25Retriever.from_texts(self.sentences)
+        bm25_retriever = BM25Retriever.from_texts(self.corpus)
         bm25_retriever.k = 20   # KLUDGE: Explain why the magic number 20
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[self.chroma_db.as_retriever(), bm25_retriever],
@@ -161,7 +148,7 @@ class GNQNA_RAG():
                 llm=GENERATIVE_MODEL,
                 prompt=self.retriever_prompt))
 
-    def set_chroma_db(self, sentences: list,
+    def set_chroma_db(self, corpus: list,
                       embed_model: Any, db_path: str,
                       chunk_size: int = 500) -> Any:
         match Path(db_path).exists():
@@ -172,8 +159,8 @@ class GNQNA_RAG():
                 )
                 return db
             case _:
-                for i in tqdm(range(0, len(sentences), chunk_size)):
-                    chunk = sentences[i:i+chunk_size]
+                for i in tqdm(range(0, len(corpus), chunk_size)):
+                    chunk = corpus[i:i+chunk_size]
                     db = Chroma.from_texts(
                         texts=chunk,
                         embedding=embed_model,
@@ -198,14 +185,14 @@ class GNQNA_RAG():
             "citations": citations,
         }
 
-question=input('Please enter your question:')
+query=input('Please enter your query:')
 rag_path='home/johannesm/pretrained_models/rag_demo.pkl'
 
 if Path(rag_path).exists():
     rag=joblib.load(rag_path)
     
-    answer = rag.ask_question(question)
-    print(answer['text'])
+    answer = rag.ask_question(query)
+    print(answer['answer'])
     
     joblib.dump(rag, rag_path)
 else:
@@ -216,7 +203,7 @@ else:
     summary_template=SUMMARY_TEMPLATE,
     )
 
-    answer = rag.ask_question(question)
-    print(answer['text'])
+    answer = rag.ask_question(query)
+    print(answer['answer'])
     joblib.dump(rag, rag_path)
 
