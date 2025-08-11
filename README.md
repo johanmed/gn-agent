@@ -14,5 +14,5 @@ You will need a Python environment with a number of dependencies to run this pro
 - langchain
 - llama-cpp-python
 - chroma-db
-- sparql-wrapper
+- sparqlwrapper
 - click
