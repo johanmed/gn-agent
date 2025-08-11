@@ -4,12 +4,13 @@ Reasoning based on tree-of-thought
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 Generative model = calme-3.2-instruct-78b-Q4_K_S
 Summary model = Phi-3-mini-4k-instruct-fp16
-Requirements: langchain, llama-cpp-python, chroma_db
+Requirements: langchain, llama-cpp-python, chroma_db, sparqlwrapper
 python rag_script.py <corpus-text.txt> <generative-model.gguf>
 """
 import click
 import os
 import sys
+import joblib
 
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -29,12 +30,12 @@ from langchain_core.prompts import PromptTemplate
 from tqdm import tqdm
 
 
-CORPUS_TEXT = "/home/bonfacem/models/corpus.txt"
+CORPUS_TEXT = "/home/johannesm/prelim_project/corpus.txt"
 # XXX: Can we pickle this to make load times faster?
 # XXX: Remove hard-coded paths.
 
 GENERATIVE_MODEL = LlamaCpp(
-    model_path="/home/bonfacem/models/calme-3.2-instruct-78b-Q4_K_S.gguf",
+    model_path="/home/johannesm/pretrained_models/calme-3.2-instruct-78b-Q4_K_S.gguf",
     max_tokens=1_000,
     n_ctx=32_768,
     seed=2_025,
@@ -44,7 +45,7 @@ GENERATIVE_MODEL = LlamaCpp(
 # XXX: Can we pickle this to make load times faster?
 # XXX: Remove hard-coded paths.
 SUMMARY_MODEL = LlamaCpp(
-    model_path='/home/bonfacem/models/Phi-3-mini-4k-instruct-fp16.gguf',
+    model_path='/home/johannesm/pretrained_models/Phi-3-mini-4k-instruct-fp16.gguf',
     max_tokens=500,
     n_ctx=4096,
     seed=2025,
@@ -197,15 +198,25 @@ class GNQNA_RAG():
             "citations": citations,
         }
 
+question=input('Please enter your question:')
+rag_path='home/johannesm/pretrained_models/rag_demo.pkl'
 
-rag = GNQNA_RAG(
+if Path(rag_path).exists():
+    rag=joblib.load(rag_path)
+    
+    answer = rag.ask_question(question)
+    print(answer['text'])
+    
+    joblib.dump(rag, rag_path)
+else:
+    rag = GNQNA_RAG(
     corpus=CORPUS_TEXT,
     rag_template=RAG_TEMPLATE,
     retriever_template=RETRIEVER_TEMPLATE,
     summary_template=SUMMARY_TEMPLATE,
-)
+    )
 
+    answer = rag.ask_question(question)
+    print(answer['text'])
+    joblib.dump(rag, rag_path)
 
-answer = rag.ask_question("Two traits have similar lod values at a specific position when the computation of the difference between the lod values gives a result less or equal to 0.5. Using that information, identify 2 traits that have similar lod values on chromosome 1 position 3010274. If any pair of traits does not have similar lod values at that position, try another pair until you exhaust all the possibilities.")
-
-print(answer)
