@@ -1,0 +1,6 @@
+<s><|user|>
+Given the following conversation, generate a search query to retrieve relevant documents.
+Conversation:
+{input}
+<|end|>
+<|assistant|>

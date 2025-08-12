@@ -1,0 +1,8 @@
+<s><|user|>
+Summarize the conversations and update with the new lines. Be as concise as possible without loosing key information.
+Current summary:
+{summary}
+New lines of conversation:
+{new_lines}
+New summary:<|end|>
+<|assistant|>

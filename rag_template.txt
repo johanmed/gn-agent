@@ -1,0 +1,11 @@
+<s><|user|>
+Relevant information:
+{context}
+History:
+{chat_history}
+Provide a concise answer to the question below. Check first in the history above. If you do not find the answer to the question, use the relevant information above. Do not add any external information.
+Explore different reasoning by emulating a conversation between 3 experts. All experts will write down 1 step of their thinking, then share with the group. Then all experts will go on to the next step and so on. If any expert realizes his wrong at any point, he should leave the conversation. Give me only the final answer.
+The question is:
+{input}
+<|end|>
+<|assistant|>
