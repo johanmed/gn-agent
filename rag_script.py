@@ -4,7 +4,6 @@ Reasoning based on tree-of-thought
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 Generative model = calme-3.2-instruct-78b-Q4_K_S
 Summary model = Phi-3-mini-4k-instruct-fp16
-Requirements: langchain, llama-cpp-python, chroma_db, rdflib
 python rag_script.py
 """
 import click
@@ -14,17 +13,17 @@ import sys
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
+from typing_extensions import TypedDict
 
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain.chains.history_aware_retriever import create_history_aware_retriever
-from langchain.chains.retrieval import create_retrieval_chain
 from langchain.memory import ConversationSummaryBufferMemory
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.llms import LlamaCpp
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
-from langchain_core.prompts import PromptTemplate
+
+from langgraph.graph import StateGraph, START
+import asyncio
 
 from rdflib import Graph
 from glob import glob
@@ -56,37 +55,20 @@ SUMMARY_MODEL=LlamaCpp(
     temperature=0,
     verbose=False)
 
-
-# Our templates for our simple RAG system
-RAG_TEMPLATE, RETRIEVER_TEMPLATE, SUMMARY_TEMPLATE="", "", ""
-
-# XX: Remove hard-coded paths.
-RAG_TEMPLATE_PATH="rag_template.txt"
-RETRIEVER_TEMPLATE_PATH="retriever_template.txt"
-SUMMARY_TEMPLATE_PATH="summary_template.txt"
-
-with open(RAG_TEMPLATE_PATH) as rag_stream:
-    RAG_TEMPLATE+=rag_stream.read()
-with open(RETRIEVER_TEMPLATE_PATH) as retriever_stream:
-    RETRIEVER_TEMPLATE+=retriever_stream.read()
-with open(SUMMARY_TEMPLATE_PATH) as summary_stream:
-    SUMMARY_TEMPLATE+=summary_stream.read()
+class State(TypedDict):
+    input: str
+    chat_history: list
+    context: list
+    answer: str
     
 @dataclass
 class GNQNA_RAG():
     corpus_path: str
-    rag_template: str
-    retriever_template: str
-    summary_template: str
-    docs: list = field(init=False)
-    memory: Any = field(init=False)
-    retrieval_chain: Any = field(init=False)
-    ensemble_retriever: Any = field(init=False)
-    rag_prompt: Any = field(init=False)
-    retriever_prompt: Any = field(init=False)
-    summary_prompt: Any = field(init=False)
     chroma_db: Any = field(init=False)
-
+    docs: list = field(init=False)
+    ensemble_retriever: Any = field(init=False)
+    memory: Any = field(init=False)
+    
     def __post_init__(self):
         self.docs=self.corpus_to_docs(self.corpus_path)
         self.chroma_db=self.set_chroma_db(
@@ -103,36 +85,14 @@ class GNQNA_RAG():
             retrievers=[self.chroma_db.as_retriever(), bm25_retriever],
             weights=[0.3, 0.7])  # KLUDGE: Explain why the magic array
 
-        # Init'ing the prompts
-        self.rag_prompt=PromptTemplate(
-            input_variables=['context', 'question', 'summary'],
-            template=self.rag_template)
-        self.retriever_prompt = PromptTemplate(
-            input_variables=['input'],
-            template=self.retriever_template)
-        self.summary_prompt = PromptTemplate(
-            input_variables=['input'],
-            template=self.summary_template)
-
-        # Building the modes.
+        # Building memory
         # KLUDGE: Consider pickling as a cache mechanism
         self.memory=ConversationSummaryBufferMemory(
             llm=SUMMARY_MODEL,
-            memory_key='chat_history',
-            input_key='input',
-            output_key='answer',
-            prompt=self.summary_prompt,
-            max_token_limit=1_000,
+            memory_key="chat_history",
+            max_token_limit=200,
             return_messages=True)
-        self.retrieval_chain = create_retrieval_chain(
-            combine_docs_chain=create_stuff_documents_chain(
-                llm=GENERATIVE_MODEL,
-                prompt=self.rag_prompt),
-            retriever=create_history_aware_retriever(
-                retriever=self.ensemble_retriever,
-                llm=GENERATIVE_MODEL,
-                prompt=self.retriever_prompt))
-
+    
     def corpus_to_docs(self, corpus_path: str) -> list:
         """Convert a corpus into an array of sentences.
         KLUDGE: XXXX: Corpus of text should be RDF.  This here
@@ -152,9 +112,7 @@ class GNQNA_RAG():
                 text+=f"{predicate}: {obj}\n"
             docs.append(text)
             return docs[:100_000]
-
-
-        
+    
     def set_chroma_db(self, docs: list,
                       embed_model: Any, db_path: str,
                       chunk_size: int = 500) -> Any:
@@ -175,29 +133,58 @@ class GNQNA_RAG():
                     db.persist()
                 return db
 
-    def ask_question(self, question: str):
-        memory_var=self.memory.load_memory_variables({})
-        chat_history=memory_var.get('chat_history', '')
-        result=self.retrieval_chain.invoke(
-            {'input': question,
-             'chat_history': chat_history})
-        answer=result.get("answer")
-        citations=result.get("context")
-        self.memory.save_context(
-            {'input': question},
-            {'answer': answer})
-        return {
-            "question": question,
-            "answer": answer,
-            "citations": citations,
-        }
+    def retrieve(self, state: State) -> Any:
+        # Define graph node for retrieval
+        prompt=f"Retrieve relevant documents for the query: {state['input']}"
+        retrieved_docs=self.ensemble_retriever.invoke(prompt)
+        return {"context": retrieved_docs}
 
-query=input('Please enter your query:')
+    def generate(self, state:State) -> Any:
+        # Define graph node for generation
+        context="\n".join(info.page_content for info in state["context"])
+        prompt= f"""
+             Answer the question below using following information.
+             Try using the history first.
+             If you cannot provide answer with it, then use the context
+             Context: {context}
+             History: {state["chat_history"]}
+             Question: {state["input"]}
+             Answer:"""
+        response = GENERATIVE_MODEL.invoke(prompt)
+        return {"answer": response}
+    
+        
+    def initialize_langgraph_chain(self) -> Any:
+        graph_builder = StateGraph(State)
+        graph_builder.add_node("retrieve", self.retrieve)
+        graph_builder.add_node("generate", self.generate)
+        graph_builder.add_edge(START, "retrieve")
+        graph_builder.add_edge("retrieve", "generate")
+        graph = graph_builder.compile()
+        return graph
+
+    async def invoke_langgraph(self, question: str,
+                               chat_history: list) -> Any:
+        self.memory.chat_memory.add_user_message(question ) # Add question
+        graph = self.initialize_langgraph_chain()
+        result = await graph.ainvoke(
+                {"input": question,
+                 "chat_history": chat_history}) # Run graph asynchronously
+        self.memory.chat_memory.add_ai_message(result["answer"])  # Add response
+        return result["answer"]
+
+    
+    def retrieve_generate(self, question: str) -> Any:
+        chat_history=self.memory.load_memory_variables({})["chat_history"]
+        result=asyncio.run(self.invoke_langgraph(question, chat_history))
+        # Close LLMs
+        GENERATIVE_MODEL.client.close()
+        SUMMARY_MODEL.client.close()
+        return {"result": result}
+
 rag=GNQNA_RAG(
     corpus_path=CORPUS_PATH,
-    rag_template=RAG_TEMPLATE,
-    retriever_template=RETRIEVER_TEMPLATE,
-    summary_template=SUMMARY_TEMPLATE,
     )
-answer=rag.ask_question(query)
-print(answer['answer'])
+query=input('Please enter your query:')
+output=rag.retrieve_generate(query)
+print(output['result'])
