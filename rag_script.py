@@ -107,9 +107,9 @@ class GNQNA_RAG():
             g.parse(turtle, format='turtle')
         docs=[]
         for subject in set(g.subjects()):
-            text=f"Entity: {subject}\n"
+            text=f"Entity {subject}\n"
             for predicate, obj in g.predicate_objects(subject):
-                text+=f"{predicate}: {obj}\n"
+                text+=f"has {predicate} of {obj}\n"
             docs.append(text)
             return docs[:100_000]
     

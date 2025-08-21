@@ -27,13 +27,16 @@ def endpoint_to_data(
         PREFIX xkos: <http://rdf-vocabulary.ddialliance.org/xkos#> 
         PREFIX pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> 
 
-        CONSTRUCT {{
-        ?s ?p ?o .
-        }}
+        SELECT DISTINCT *
         WHERE {{
-        ?s rdf:type gnc:Phenotype .
-        ?s gnt:belongsToGroup gn:setBxd .
-        ?s ?p ?o .
+        ?trait gnt:belongsToGroup gn:setBxd .
+        ?trait ?property1 ?value_property1 .
+        OPTIONAL {{
+        ?trait a gnt:mappedTrait . 
+        # make sure to get all SNPs for traits with related data, including lods
+        ?snp gnt:mappedSnp ?trait .
+        ?snp ?property2 ?value_property2 .
+        }}
         }}
         OFFSET {offset}
         LIMIT {limit}
