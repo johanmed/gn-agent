@@ -4,7 +4,6 @@ Reasoning based on tree-of-thought
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 Generative model = calme-3.2-instruct-78b-Q4_K_S
 Summary model = Phi-3-mini-4k-instruct-fp16
-python rag_script.py
 """
 import click
 import os
@@ -15,6 +14,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
+from transformers import AutoTokenizer
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
@@ -41,10 +41,12 @@ CORPUS_PATH="/home/johannesm/corpus/"
 # XXX: Remove hard-coded path.
 DB_PATH="/home/johannesm/tmp/chroma_db"
 
+EMBED_MODEL="Qwen/Qwen3-Embedding-0.6B"
+
 # XXX: Remove hard-coded paths.
 GENERATIVE_MODEL=LlamaCpp(
     model_path="/home/johannesm/pretrained_models/calme-3.2-instruct-78b-Q4_K_S.gguf",
-    max_tokens=1_000,
+    max_tokens=200,
     n_ctx=32_768,
     seed=2_025,
     temperature=0,
@@ -53,7 +55,7 @@ GENERATIVE_MODEL=LlamaCpp(
 # XXX: Remove hard-coded paths.
 SUMMARY_MODEL=LlamaCpp(
     model_path="/home/johannesm/pretrained_models/Phi-3-mini-4k-instruct-fp16.gguf",
-    max_tokens=500,
+    max_tokens=100,
     n_ctx=4096,
     seed=2025,
     temperature=0,
@@ -75,6 +77,9 @@ with open(RETRIEVER_TEMPLATE_PATH) as retriever_stream:
 with open(SUMMARY_TEMPLATE_PATH) as summary_stream:
     SUMMARY_TEMPLATE+=summary_stream.read()
 
+# Tokenize retriever template specifically
+tokenizer=AutoTokenizer.from_pretrained(EMBED_MODEL)
+RETRIEVER_TEMPLATE=tokenizer(RETRIEVER_TEMPLATE, padding=True)
 
 @dataclass
 class GNQNA_RAG():
@@ -97,7 +102,7 @@ class GNQNA_RAG():
         self.chroma_db=self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
-                model_name="Qwen/Qwen3-Embedding-0.6B"),
+                model_name=EMBED_MODEL),
             db_path=self.db_path)
 
         # Init'ing the ensemble retriever
@@ -212,5 +217,5 @@ rag=GNQNA_RAG(
     retriever_template=RETRIEVER_TEMPLATE,
     summary_template=SUMMARY_TEMPLATE,
     )
-output=rag.ask_question('What is the lod score of BXDPublish_10187_gemma_GWA at D12mit280?')
+output=rag.ask_question('I want you to extract from the database anywhere there is D12mit280. You allowed to initiate many rounds of retrieval until you get 20 relevant results. Next, extract the lod score and trait for each result. List for me traits that have a lod score > 4.0. Join to the list the corresponding lod scores so I can confirm. Show results using the following format: trait - lod score\n')
 print(output['answer'])
