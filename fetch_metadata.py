@@ -1,4 +1,4 @@
-from SPARQLWrapper import SPARQLWrapper, RDF
+from SPARQLWrapper import SPARQLWrapper
 from typing import Any
 import time
 
@@ -7,10 +7,8 @@ TURTLE_DIR='/home/johannesm/corpus/'
 def endpoint_to_data(
         limit: int,
         offset: int,
-        sparql: Any = SPARQLWrapper("https://sparql.genenetwork.org/sparql"),
+        sparql: Any = SPARQLWrapper("http://sparql-test.genenetwork.org/sparql/"),
         ) -> Any:
-    
-    sparql.setReturnFormat(RDF)
     sparql.setQuery(
         f"""
         PREFIX dct: <http://purl.org/dc/terms/> 
@@ -27,7 +25,10 @@ def endpoint_to_data(
         PREFIX xkos: <http://rdf-vocabulary.ddialliance.org/xkos#> 
         PREFIX pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> 
 
-        SELECT DISTINCT *
+        CONSTRUCT {{
+        ?trait ?property1 ?value_property1 .
+        ?snp ?property2 ?value_property2 .
+        }}
         WHERE {{
         ?trait gnt:belongsToGroup gn:setBxd .
         ?trait ?property1 ?value_property1 .
@@ -56,10 +57,10 @@ def data_to_file(
     print(f'chunk {chunk_num}')
 
 def process(
-        limit: int = 1_000, # Explain magic 1_000
+        limit: int = 5_000, # Explain magic number 5_000
         offset: int = 0,
         chunk_num: int = 0,
-        time_sleep: int = 5) -> Any: # Explain magic 5
+        time_sleep: int = 5) -> Any: # Explain magic number 5
     while True:
         data=endpoint_to_data(
             limit=limit,

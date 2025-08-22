@@ -9,6 +9,7 @@ python rag_script.py
 import click
 import os
 import sys
+import time
 
 from pathlib import Path
 from dataclasses import dataclass, field
@@ -34,8 +35,11 @@ import warnings
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-# XXX: Remove hard-coded paths
+# XXX: Remove hard-coded path.
 CORPUS_PATH="/home/johannesm/corpus/"
+
+# XXX: Remove hard-coded path.
+DB_PATH="/home/johannesm/tmp/chroma_db"
 
 # XXX: Remove hard-coded paths.
 GENERATIVE_MODEL=LlamaCpp(
@@ -64,6 +68,7 @@ class State(TypedDict):
 @dataclass
 class GNQNA_RAG():
     corpus_path: str
+    db_path: str
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
@@ -75,12 +80,11 @@ class GNQNA_RAG():
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
                 model_name="Qwen/Qwen3-Embedding-0.6B"),
-            db_path='/home/johannesm/tmp/chroma_db'
-        )
+            db_path=self.db_path)
 
         # Init'ing the ensemble retriever
         bm25_retriever=BM25Retriever.from_texts(self.docs)
-        bm25_retriever.k=20   # KLUDGE: Explain why the magic number 20
+        bm25_retriever.k=5   # KLUDGE: Explain why the magic number 5
         self.ensemble_retriever=EnsembleRetriever(
             retrievers=[self.chroma_db.as_retriever(), bm25_retriever],
             weights=[0.3, 0.7])  # KLUDGE: Explain why the magic array
@@ -98,9 +102,10 @@ class GNQNA_RAG():
         KLUDGE: XXXX: Corpus of text should be RDF.  This here
         is for testing.
         """
+        start=time.time()
+        # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
-
         turtles=glob(f"{corpus_path}rdf_data*.ttl")
         g=Graph()
         for turtle in turtles:    
@@ -111,7 +116,9 @@ class GNQNA_RAG():
             for predicate, obj in g.predicate_objects(subject):
                 text+=f"has {predicate} of {obj}\n"
             docs.append(text)
-            return docs[:100_000]
+        end=time.time()
+        print(f'corpus_to_docs: {end-start}')
+        return docs
     
     def set_chroma_db(self, docs: list,
                       embed_model: Any, db_path: str,
@@ -165,7 +172,7 @@ class GNQNA_RAG():
 
     async def invoke_langgraph(self, question: str,
                                chat_history: list) -> Any:
-        self.memory.chat_memory.add_user_message(question ) # Add question
+        self.memory.chat_memory.add_user_message(question) # Add question
         graph = self.initialize_langgraph_chain()
         result = await graph.ainvoke(
                 {"input": question,
@@ -175,16 +182,19 @@ class GNQNA_RAG():
 
     
     def retrieve_generate(self, question: str) -> Any:
+        start=time.time()
         chat_history=self.memory.load_memory_variables({})["chat_history"]
         result=asyncio.run(self.invoke_langgraph(question, chat_history))
         # Close LLMs
         GENERATIVE_MODEL.client.close()
         SUMMARY_MODEL.client.close()
+        end=time.time()
+        print(f'retrieve_generate: {end-start}')
         return {"result": result}
 
 rag=GNQNA_RAG(
     corpus_path=CORPUS_PATH,
-    )
-query=input('Please enter your query:')
-output=rag.retrieve_generate(query)
+    db_path=DB_PATH)
+#query=input('Please enter your query:')
+output=rag.retrieve_generate('What is the lod score of BXDPublish_10187_gemma_GWA at D12mit280?')
 print(output['result'])
