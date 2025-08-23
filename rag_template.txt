@@ -6,8 +6,8 @@ Answer the question below using following information.
 Try using the history first.
 If you cannot provide answer with it, then use the context
 Context: {context}
-History: {state["chat_history"]}
-Question: {state["input"]}
+History: {chat_history}
+Question: {question}
 Answer:
 <|im_end|>
 <|im_start|>assistant
