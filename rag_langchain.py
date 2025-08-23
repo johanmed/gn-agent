@@ -14,7 +14,6 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Any
 
-from transformers import AutoTokenizer
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains.history_aware_retriever import create_history_aware_retriever
 from langchain.chains.retrieval import create_retrieval_chain
@@ -77,10 +76,6 @@ with open(RETRIEVER_TEMPLATE_PATH) as retriever_stream:
 with open(SUMMARY_TEMPLATE_PATH) as summary_stream:
     SUMMARY_TEMPLATE+=summary_stream.read()
 
-# Tokenize retriever template specifically
-tokenizer=AutoTokenizer.from_pretrained(EMBED_MODEL)
-RETRIEVER_TEMPLATE=tokenizer(RETRIEVER_TEMPLATE, padding=True)
-
 @dataclass
 class GNQNA_RAG():
     corpus_path: str
@@ -114,13 +109,13 @@ class GNQNA_RAG():
 
         # Init'ing the prompts
         self.rag_prompt=PromptTemplate(
-            input_variables=['context', 'question', 'summary'],
+            input_variables=['chat_history', 'context', 'question'],
             template=self.rag_template)
         self.retriever_prompt = PromptTemplate(
             input_variables=['input'],
             template=self.retriever_template)
         self.summary_prompt = PromptTemplate(
-            input_variables=['input'],
+            input_variables=['question', 'chat_history'],
             template=self.summary_template)
 
         # Building the modes.
@@ -191,7 +186,8 @@ class GNQNA_RAG():
         memory_var=self.memory.load_memory_variables({})
         chat_history=memory_var.get('chat_history', '')
         result=self.retrieval_chain.invoke(
-            {'input': question,
+            {'question': question,
+             'input': question,
              'chat_history': chat_history})
         answer=result.get("answer")
         citations=result.get("context")
@@ -217,5 +213,5 @@ rag=GNQNA_RAG(
     retriever_template=RETRIEVER_TEMPLATE,
     summary_template=SUMMARY_TEMPLATE,
     )
-output=rag.ask_question('I want you to extract from the database anywhere there is D12mit280. You allowed to initiate many rounds of retrieval until you get 20 relevant results. Next, extract the lod score and trait for each result. List for me traits that have a lod score > 4.0. Join to the list the corresponding lod scores so I can confirm. Show results using the following format: trait - lod score\n')
+output=rag.ask_question('Extract lod scores and traits for the locus D12mit280. You are allowed to initiate many rounds of search retrieval until you reach the target. List only for me traits that have a lod score > 4.0. Show results using the following format: trait - lod score\n')
 print(output['answer'])
