@@ -1,9 +1,10 @@
 """
 This scripts runs through a demo on the use of RAG system for genomic analysis
-Reasoning based on tree-of-thought
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 Generative model = calme-3.2-instruct-78b-Q4_K_S
 Summary model = Phi-3-mini-4k-instruct-fp16
+Author: Johannes Medagbe
+Editor: Bonface Munyoki
 """
 import click
 import os
@@ -137,29 +138,63 @@ class GNQNA_RAG():
                 llm=GENERATIVE_MODEL,
                 prompt=self.retriever_prompt))
 
-    def corpus_to_docs(self, corpus_path: str) -> list:
-        """Convert a corpus into an array of sentences.
-        KLUDGE: XXXX: Corpus of text should be RDF.  This here
-        is for testing.
-        """
-        start=time.time()
+    def corpus_to_docs(self, corpus_path: str,
+                       max_docs: int = 20) -> list: # Explain magic number 20
+        print("In corpus_to_docs")
+        start = time.time()
+
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
-        turtles=glob(f"{corpus_path}rdf_data*.ttl")
-        g=Graph()
+
+        turtles = glob(f"{corpus_path}rdf_data*.ttl")
+        g = Graph()
         for turtle in turtles:    
             g.parse(turtle, format='turtle')
-        docs=[]
-        for subject in set(g.subjects()):
-            text=f"Entity: {subject}\n"
-            for predicate, obj in g.predicate_objects(subject):
-                text+=f"has {predicate} of {obj}\n"
-            docs.append(text)
-        end=time.time()
-        print(f'corpus_to_docs: {end-start}')
-        return docs
 
+        docs = []
+
+        for subject in set(g.subjects()):
+            text = f"{subject}:"
+            for predicate, obj in g.predicate_objects(subject):
+                text += f"{predicate}:{obj}\n"
+
+            prompt = f"""
+                <|im_start|>system
+                You are extremely good at naturalizing RDF and inferring meaning
+                <|im_end|>
+                <|im_start|>user
+                Take following data and make it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: "http://genenetwork.org/id/traitBxd_20537:\
+                http://purl.org/dc/terms/isReferencedBy: \
+                http://genenetwork.org/id/unpublished22893\n \
+                http://genenetwork.org/term/locus: \
+                http://genenetwork.org/id/Rsm10000002554"
+                <|im_end|>
+                <|im_start|>assistant
+                Result: "traitBxd_20537 is referenced by unpublished22893 \
+                and has been tested for Rsm10000002554"
+                <|im_end|>
+                <|im_start|>user
+                Take following RDF data andmake it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: {text}
+                <|im_start|>end
+                <|im_start|>assistant"""
+
+            response = GENERATIVE_MODEL.invoke(prompt)
+            print(f"Documents: {response}")
+
+            if len(docs) >= max_docs:
+                break
+
+            docs.append(response)
+
+        end = time.time()
+        print(f'corpus_to_docs: {end-start}')
+
+        return docs
         
     def set_chroma_db(self, docs: list,
                       embed_model: Any, db_path: str,

@@ -2,6 +2,7 @@
 This scripts runs through a demo on the use of a multi-agent system for genomic analysis
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 Generative model = calme-3.2-instruct-78b-Q4_K_S
+Author: Johannes Medagbe
 """
 import click
 import os
@@ -54,7 +55,6 @@ class State(TypedDict):
     input: str
     chat_history: list[str]
     context: list[str]
-    digested_context: list[str]
     answer: str
     result_count: int
     iterations: int
@@ -72,7 +72,9 @@ class GNQNA():
     ensemble_retriever: Any = field(init=False)
     
     def __post_init__(self):
+
         self.docs=self.corpus_to_docs(self.corpus_path)
+
         self.chroma_db=self.set_chroma_db(
             docs = self.docs,
             embed_model=HuggingFaceEmbeddings(
@@ -82,37 +84,74 @@ class GNQNA():
         # Init'ing the ensemble retriever
         bm25_retriever = BM25Retriever.from_texts(self.docs)
         bm25_retriever.k = 5   # KLUDGE: Explain why the magic number 5
+
         self.ensemble_retriever=EnsembleRetriever(
             retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
-            weights = [0.2, 0.8])  # KLUDGE: Explain why the magic array
+            weights = [0.3, 0.7])  # KLUDGE: Explain why the magic array
 
     
-    def corpus_to_docs(self, corpus_path: str) -> list:
-        """Convert a corpus into an array of sentences.
-        KLUDGE: XXXX: Corpus of text should be RDF.  This here
-        is for testing.
-        """
+    def corpus_to_docs(self, corpus_path: str,
+                       max_docs: int = 20) -> list: # Explain magic number 20
+        print("In corpus_to_docs")
         start = time.time()
+
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
+
         turtles = glob(f"{corpus_path}rdf_data*.ttl")
         g = Graph()
         for turtle in turtles:    
             g.parse(turtle, format='turtle')
+
         docs = []
+
         for subject in set(g.subjects()):
-            text = f"Entity {subject}\n"
+            text = f"{subject}:"
             for predicate, obj in g.predicate_objects(subject):
-                text += f"has {predicate} of {obj}\n"
-            docs.append(text)
+                text += f"{predicate}:{obj}\n"
+
+            prompt = f"""
+                <|im_start|>system
+                You are extremely good at naturalizing RDF and inferring meaning
+                <|im_end|>
+                <|im_start|>user
+                Take following data and make it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: "http://genenetwork.org/id/traitBxd_20537:\
+                http://purl.org/dc/terms/isReferencedBy: \
+                http://genenetwork.org/id/unpublished22893\n \
+                http://genenetwork.org/term/locus: \
+                http://genenetwork.org/id/Rsm10000002554"
+                <|im_end|>
+                <|im_start|>assistant
+                Result: "traitBxd_20537 is referenced by unpublished22893 \
+                and has been tested for Rsm10000002554"
+                <|im_end|>
+                <|im_start|>user
+                Take following RDF data andmake it sound like Plain English.
+                You should return a coherent paragraph with clear sentences.
+                Data: {text}
+                <|im_start|>end
+                <|im_start|>assistant"""
+
+            response = GENERATIVE_MODEL.invoke(prompt)
+            #print(f"Documents: {response}")
+
+            if len(docs) >= max_docs:
+                break
+
+            docs.append(response)
+
         end = time.time()
         print(f'corpus_to_docs: {end-start}')
+
         return docs
     
     def set_chroma_db(self, docs: list,
                       embed_model: Any, db_path: str,
                       chunk_size: int = 500) -> Any:
+        print("In set_chroma_db")
         match Path(db_path).exists():
             case True:
                 db = Chroma(persist_directory=db_path,
@@ -131,6 +170,7 @@ class GNQNA():
     def retrieve(self, state: State) -> dict:
         # Define graph node for retrieval
         print("\nRetrieving...")
+
         prompt = f"""
         <im_start>system
         You are powerful query generator and you strictly return
@@ -138,7 +178,7 @@ class GNQNA():
         <im_end>
         <im_start>user
         Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Focus on the keyword trait in the query.
+        the question below.
         Question: Compare lodscore at Rs2120 for traitBxd_12680
         and traitBxd_20496
         Answer:
@@ -149,150 +189,56 @@ class GNQNA():
         <im_end>
         <im_start>user
         Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Focus on the keyword trait in the query.
+        the question below.
         Question: {state['input']}
         <im_end>
         <im_start>assistant"""
+
         response = GENERATIVE_MODEL.invoke(prompt)
+        print(f"\nResponse in retrieve: {response}")
+
         if isinstance(response, str):
             start = response.find("[")
             end = response.rfind("]") + 1 # offset by 1 for slicing
             response = json.loads(response[start:end])
         else:
             response = []
+
         retrieved_docs = [self.ensemble_retriever.invoke(f"Query: {query} \
             Exclude documents: {state.get('seen_documents', [])}") for query \
             in response if query]
+
         print(f"Retrieved docs in retrieve: {retrieved_docs}")
+
         return {"input": state["input"],
                 "context": retrieved_docs,
-                "digested_context": state.get("digested_context", []),
                 "result_count": state.get("result_count", 0),
                 "target": state.get("target", 3),
                 "max_iterations": state.get("max_iterations", 5),
-                "should_continue": "naturalize",
+                "should_continue": "analyze",
                 "iterations": state.get("iterations", 0) + 1, # Add one per run
                 "chat_history": state.get("chat_history", []),
                 "answer": state.get("answer", ""),
                 "seen_documents": state.get("seen_documents", [])}
 
-    def manage(self, state:State) -> dict:
-        # Define graph node for task orchestration
-        print("\nManaging...")
-        context = state.get("context", [])
-        digested_context = state.get("digested_context", [])
-        answer = state.get("answer", "")
-        iterations = state.get("iterations", 0)
-        chat_history = state.get("chat_history", [])
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-        max_iterations = state.get("max_iterations", 5)
-        should_continue = state.get("should_continue", "retrieve")
-        # Orchestration logic
-        if iterations >= max_iterations or result_count >= target:
-            should_continue = "summarize"
-        elif should_continue == "retrieve":
-            # Reset fields
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "naturalize" and not context:
-            should_continue = "retrieve"  # Can't naturalize without context
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "analyze" and \
-             (not context or not digested_context):
-            should_continue = "retrieve"  # Can't analyze without context
-            context = []
-            digested_context = []
-            answer = ""
-        elif should_continue == "check_relevance" and not answer:
-            should_continue = "analyze"  # Can't check relevance without answer
-        elif should_continue not in ["retrieve", \
-                "naturalize", "check_relevance", "analyze", "summarize"]:
-            should_continue = "summarize"  # Fallback
-        return {"input": state["input"],
-                "should_continue": should_continue,
-                "result_count": result_count,
-                "target": target,
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "context": context,
-                "digested_context": digested_context,
-                "chat_history": chat_history,
-                "answer": answer,
-                "seen_documents": state.get("seen_documents", [])}
-
-
-    def naturalize(self, state: State) -> dict:
-        # Define graph node for RDF naturalization
-        print("\nNaturalizing...")
-        context = state.get("context", [])
-        processed_context = [] # flatten context
-        for doc_list in context:
-            if isinstance(doc_list, list):
-                processed_context.extend([doc.page_content for doc in \
-                        doc_list if hasattr(doc, 'page_content')])
-            elif hasattr(doc_list, 'page_content'):
-                processed_context.append(doc_list.page_content)
-        prompt = f"""
-        <|im_start|>system
-        You are extremely good at naturalizing RDF and inferring meaning.
-        <|im_end|>
-        <|im_start|>user
-        Take element in the list of RDF triples one by one and
-        make it sounds like Plain English. Repeat for each the subject
-        which is at the start. You should return a list. Nothing else.
-        List: ["Entity http://genenetwork.org/id/traitBxd_20537 \
-        \nhas http://purl.org/dc/terms/isReferencedBy of \
-        http://genenetwork.org/id/unpublished22893", "has \
-        http://genenetwork.org/term/locus of \
-        http://genenetwork.org/id/Rsm10000002554"]
-        <|im_end|>
-        <|im_start|>assistant
-        New list: ["traitBxd_20537 isReferencedBy unpublished22893", \
-        "traitBxd_20537 has a locus Rsm10000002554"]
-        <|im_end|>
-        <|im_start|>user
-        Take element in the list of RDF triples one by one and
-        make it sounds like Plain English. Repeat for each the subject
-        which is at the start. You should return a list. Nothing else.
-        List: {processed_context}
-        <|im_start|>end
-        <|im_start|>assistant"""
-        response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"\nResponse in naturalize: {response}")
-        if isinstance(response, str):
-            start=response.find("[")
-            end=response.rfind("]") + 1 # offset by 1 to make slicing
-            response=json.loads(response[start:end])
-        else:
-            response=[]
-        return {"input": state["input"],
-                "context": state.get("context", []),
-                "digested_context": response,
-                "result_count": state.get("result_count", 0),
-                "target": state.get("target", 3),
-                "max_iterations": state.get("max_iterations", 5),
-                "should_continue": "analyze",
-                "iterations": state.get("iterations", 0),
-                "chat_history": state.get("chat_history", []),
-                "answer": state.get("answer", ""),
-                "seen_documents": state.get("seen_documents", [])}
-    
     def analyze(self, state:State) -> dict:
         # Define graph node for analysis and text generation
         print("\nAnalysing...")
-        digested_context = "\n".join(state.get("digested_context", []))
+
+        context = "\n".join(doc.page_content for doc_list in \
+            state.get("context", []) for doc in doc_list if \
+            hasattr(doc, 'page_content')) if state.get("context", []) else ""
+
         existing_history="\n".join(state.get("chat_history", [])) \
             if state.get("chat_history") else ""
+
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
         result_count = state.get("result_count", 0)
         target = state.get("target", 3)
-        if not digested_context: # Cannot proceed without context
-            should_continue = "summarize" if iterations >= max_iterations \
+
+        if not context: # Cannot proceed without context
+            should_continue = "finalize" if iterations >= max_iterations \
                 or result_count >= target else "retrieve"
             response = ""
         else:
@@ -303,13 +249,16 @@ class GNQNA():
              <|im_end|>
              <|im_start|>user
              Answer the question below using following information.
-             Context: {digested_context}
+             Context: {context}
              History: {existing_history}
              Question: {state["input"]}
              Answer:
              <|im_end|>
              <|im_start|>assistant"""
+
             response = GENERATIVE_MODEL.invoke(prompt)
+            print(f"\nResponse in analyze: {response}")
+
             if not response or not isinstance(response, str) or \
                     response.strip() == "": # Need valid generation
                 should_continue = "summarize" if iterations >= max_iterations \
@@ -317,11 +266,11 @@ class GNQNA():
                 response = ""  # Ensure a clean state
             else:
                 should_continue = "check_relevance"
+
         return {"input": state["input"],
                 "answer": response,
                 "should_continue": should_continue,
                 "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
                 "iterations": iterations,
                 "max_iterations": max_iterations,
                 "result_count": result_count,
@@ -329,57 +278,20 @@ class GNQNA():
                 "chat_history": state.get("chat_history", []),
                 "seen_documents": state.get("seen_documents", [])}
 
-    
-    def summarize(self, state:State) -> dict:
-        # Define node for summarization
-        print("\nSummarizing...")
-        existing_history = state.get("chat_history", [])
-        current_interaction=f"""
-            User: {state["input"]}\nAssistant: {state["answer"]}"""
-        full_context = "\n".join(existing_history) + "\n" + \
-            current_interaction if existing_history else current_interaction
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 5)
-        prompt = f"""
-            <|im_start|>system
-            You are an excellent and concise summary maker.
-            <|im_end|>
-            <|im_start|>user
-            Summarize in bullet points the conversation below.
-            Follow this format: input - answer
-            Conversation: {full_context}
-            <|im_end|>
-            <|im_start|>assistant"""
-        summary = GENERATIVE_MODEL.invoke(prompt).strip() # central task
-        if not summary or not isinstance(summary, str) or summary.strip() == "":
-            summary = f"- {state['input']} - No valid answer generated"
-        should_continue="end" if result_count >= target or \
-            iterations >= max_iterations else "retrieve"
-        updated_history = existing_history + [summary] # update chat_history
-        print(f"\nChat history in summarize: {updated_history}")
-        return {"input": state["input"],
-                "answer": summary,
-                "should_continue": should_continue,
-                "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "result_count": result_count,
-                "target": target,
-                "chat_history": updated_history,
-                "seen_documents": state.get("seen_documents", [])}
-
     def check_relevance(self, state:State) -> dict:
         # Define node to check relevance of retrieved data
         print("\nChecking relevance...")
-        context = "\n".join(state.get("digested_context", []))
+
+        context = "\n".join(doc.page_content for doc_list in \
+            state.get("context", []) for doc in doc_list if \
+            hasattr(doc, 'page_content')) if state.get("context", []) else ""
+
         result_count = state.get("result_count", 0)
         target = state.get("target", 3)
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
         seen_documents = state.get("seen_documents", [])
+
         prompt = f"""
             <|im_start|>system
             You are an expert in evaluating data relevance. You do it seriously.
@@ -404,20 +316,25 @@ class GNQNA():
             Context: {context}
             <|im_end|>
             <|im_start|>assistant"""
+
         assessment = GENERATIVE_MODEL.invoke(prompt).strip()
-        print(f"\nAssessment in checking relevance: {assessment}")
-        if assessment=="yes":
+        #print(f"\nAssessment in checking relevance: {assessment}")
+
+        if "yes" in assessment:
             result_count = result_count + 1
             should_continue = "summarize"
         elif result_count >= target or iterations >= max_iterations:
-            should_continue = "summarize"
+            should_continue = "finalize"
         else:
             should_continue = "retrieve"
-            seen_documents.extend([doc.page_content for doc in \
-                state.get("context", [])])
+
+        if context:
+            for doc_list in state.get("context", []):
+                seen_documents.extend([doc.page_content for doc in doc_list \
+                if hasattr(doc, "page_content")])
+
         return {"input": state["input"],
                 "context": state.get("context", []),
-                "digested_context": state.get("digested_context", []),
                 "iterations": iterations,
                 "max_iterations": max_iterations,
                 "answer": state["answer"],
@@ -426,47 +343,133 @@ class GNQNA():
                 "seen_documents": seen_documents,
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
+
+    def summarize(self, state:State) -> dict:
+        # Define node for summarization
+        print("\nSummarizing...")
+        existing_history = state.get("chat_history", [])
+
+        current_interaction=f"""
+            User: {state["input"]}\nAssistant: {state["answer"]}"""
+
+        full_context = "\n".join(existing_history) + "\n" + \
+            current_interaction if existing_history else current_interaction
+
+        result_count = state.get("result_count", 0)
+        target = state.get("target", 3)
+        iterations = state.get("iterations", 0)
+        max_iterations = state.get("max_iterations", 5)
+
+        prompt = f"""
+            <|im_start|>system
+            You are an excellent and concise summary maker.
+            <|im_end|>
+            <|im_start|>user
+            Summarize in bullet points the conversation below.
+            Follow this format: input - answer
+            Conversation: {full_context}
+            <|im_end|>
+            <|im_start|>assistant"""
+
+        summary = GENERATIVE_MODEL.invoke(prompt).strip()
+
+        if not summary or not isinstance(summary, str) or summary.strip() == "":
+            summary = f"- {state['input']} - No valid answer generated"
+
+        should_continue="finalize" if result_count >= target or \
+            iterations >= max_iterations else "retrieve"
+
+        updated_history = existing_history + [summary] # update chat_history
+        #print(f"\nChat history in summarize: {updated_history}")
+
+        return {"input": state["input"],
+                "answer": summary,
+                "should_continue": should_continue,
+                "context": state.get("context", []),
+                "iterations": iterations,
+                "max_iterations": max_iterations,
+                "result_count": result_count,
+                "target": target,
+                "chat_history": updated_history,
+                "seen_documents": state.get("seen_documents", [])}
+
+    def finalize(self, state: State) -> dict:
+        print("\nFinalizing...")
+
+        full_history = "\n".join(state.get("chat_history", [])) \
+            if state.get("chat_history") else ""
+
+        if not full_history:
+            final_answer = "Insufficient data for analysis."
+        else:
+            prompt = f"""
+            <|im_start|>system
+            You are an expert synthesizer. Compile the following summarized \
+            interactions into a single, well-structured paragraph that answers \
+            the original question coherently. \
+            Ensure the response is insightful, concise, and draws \
+            logical inferences where possible.
+            <|im_end|>
+            <|im_start|>user
+            Original question: {state["input"]}
+            Summarized history: {full_history}
+            Provide only the final paragraph, nothing else.
+            <|im_end|>
+            <|im_start|>assistant"""
         
+            response = GENERATIVE_MODEL.invoke(prompt).strip()
+            print(f"Response in finalizing: {response}")
+
+            final_answer = response if response else "Sorry, we are unable to \
+            provide a valuable feedback due to lack of relevant data."
+
+        return {"input": state["input"],
+                "answer": final_answer,
+                "context": state.get("context", []),
+                "iterations": state.get("iterations", 0),
+                "max_iterations": state.get("max_iterations", 5),
+                "result_count": state.get("result_count", 0),
+                "target": state.get("target", 3),
+                "chat_history": state.get("chat_history", []),
+                "seen_documents": state.get("seen_documents", [])}
+    
     def route_manage(self, state: State) -> str:
-            should_continue = state.get("should_continue", "retrieve")
-            iterations = state.get("iterations", 0)
-            max_iterations = state.get("max_iterations", 5)
-            result_count = state.get("result_count", 0)
-            target = state.get("target", 3)
-            context = state.get("context", [])
-            digested_context = state.get("digested_context", [])
-            answer = state.get("answer", "")
-            # Validate state and enforce termination
-            if iterations >= max_iterations or result_count >= target:
-                return "summarize"
-            if should_continue not in ["retrieve", "naturalize", \
-                    "check_relevance", "analyze", "summarize"]:
-                return "summarize"  # Fallback to summarize
-            return should_continue
+        # Function for conditional routing at manage
+        should_continue = state.get("should_continue", "retrieve")
+        iterations = state.get("iterations", 0)
+        max_iterations = state.get("max_iterations", 5)
+        result_count = state.get("result_count", 0)
+        target = state.get("target", 3)
+        context = state.get("context", [])
+        answer = state.get("answer", "")
+
+        if iterations >= max_iterations or result_count >= target:
+            return "finalize"
+        elif should_continue not in ["retrieve" \
+                "check_relevance", "analyze", "summarize", "finalize"]:
+            return "finalize"
+        else:
+            return "retrieve"
 
     def initialize_langgraph_chain(self) -> Any:
         graph_builder = StateGraph(State)
-        graph_builder.add_node("manage", self.manage)
         graph_builder.add_node("retrieve", self.retrieve)
-        graph_builder.add_node("naturalize", self.naturalize)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
         graph_builder.add_node("summarize", self.summarize)
-        graph_builder.add_edge(START, "manage")
-        graph_builder.add_edge("retrieve", "naturalize")
-        graph_builder.add_edge("naturalize", "analyze")
+        graph_builder.add_node("finalize", self.finalize)
+        graph_builder.add_edge(START, "retrieve")
+        graph_builder.add_edge("retrieve", "analyze")
         graph_builder.add_edge("analyze", "check_relevance")
-        graph_builder.add_edge("check_relevance", "manage")
-        graph_builder.add_edge("summarize", END)
+        graph_builder.add_edge("check_relevance", "summarize")
+        graph_builder.add_edge("finalize", END)
         graph_builder.add_conditional_edges(
-            "manage",
+            "summarize",
             self.route_manage,
             {"retrieve": "retrieve",
-             "naturalize": "naturalize",
-             "check_relevance": "check_relevance",
-             "analyze": "analyze",
-             "summarize": "summarize"})
+             "finalize": "finalize"})
         graph=graph_builder.compile()
+
         return graph
 
     async def invoke_langgraph(self, question: str) -> Any:
@@ -475,7 +478,6 @@ class GNQNA():
             "input": question,
             "chat_history": [],
             "context": [],
-            "digested_context": [],
             "seen_documents": [],
             "answer": "",
             "iterations": 0,
@@ -485,6 +487,7 @@ class GNQNA():
             "max_iterations": 5 # Explain magic number 5
         }
         result = await graph.ainvoke(initial_state) # Run graph asynchronously
+
         return result
 
     
@@ -493,7 +496,8 @@ class GNQNA():
         result = asyncio.run(self.invoke_langgraph(question))
         end = time.time()
         print(f'answer_question: {end-start}')
-        return {"result": result["chat_history"],
+
+        return {"result": result.get("answer", "No final answer generated"),
                 "state": result}
 
 agent = GNQNA(corpus_path=CORPUS_PATH,
@@ -501,9 +505,8 @@ agent = GNQNA(corpus_path=CORPUS_PATH,
 
 #query = input('Please enter your query:')
 
-output = agent.answer_question('Compare lod scores for traitBxd_12680 and traitBxd_20496. Do it locus by locus.')
+output = agent.answer_question('Identify traits having a lod score > 4.0')
 print("\nFinal answer:", output["result"])
-print("\nCitations:", output["state"]["digested_context"])
 
 GENERATIVE_MODEL.client.close()
 
