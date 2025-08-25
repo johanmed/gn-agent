@@ -84,7 +84,7 @@ class GNQNA():
         bm25_retriever.k = 5   # KLUDGE: Explain why the magic number 5
         self.ensemble_retriever=EnsembleRetriever(
             retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
-            weights = [0.5, 0.5])  # KLUDGE: Explain why the magic array
+            weights = [0.2, 0.8])  # KLUDGE: Explain why the magic array
 
     
     def corpus_to_docs(self, corpus_path: str) -> list:
@@ -130,13 +130,40 @@ class GNQNA():
 
     def retrieve(self, state: State) -> dict:
         # Define graph node for retrieval
+        print("\nRetrieving...")
         prompt = f"""
-        You are powerful data retriever and you strictly return
+        <im_start>system
+        You are powerful query generator and you strictly return
         what is asked for.
-        Retrieve relevant documents for the query below,
-        excluding these documents: {state.get('seen_documents', [])}
-        Query: {state['input']}"""
-        retrieved_docs = self.ensemble_retriever.invoke(prompt)
+        <im_end>
+        <im_start>user
+        Generate a list of queries to retrieve relevant documents relevant to
+        the question below. Focus on the keyword trait in the query.
+        Question: Compare lodscore at Rs2120 for traitBxd_12680
+        and traitBxd_20496
+        Answer:
+        <im_end>
+        <im_start>assistant
+        ["lodscore at Rs2120 for traitBxd_12680",
+        "lodscore at Rs2120 for traitBxd_20496"]
+        <im_end>
+        <im_start>user
+        Generate a list of queries to retrieve relevant documents relevant to
+        the question below. Focus on the keyword trait in the query.
+        Question: {state['input']}
+        <im_end>
+        <im_start>assistant"""
+        response = GENERATIVE_MODEL.invoke(prompt)
+        if isinstance(response, str):
+            start = response.find("[")
+            end = response.rfind("]") + 1 # offset by 1 for slicing
+            response = json.loads(response[start:end])
+        else:
+            response = []
+        retrieved_docs = [self.ensemble_retriever.invoke(f"Query: {query} \
+            Exclude documents: {state.get('seen_documents', [])}") for query \
+            in response if query]
+        print(f"Retrieved docs in retrieve: {retrieved_docs}")
         return {"input": state["input"],
                 "context": retrieved_docs,
                 "digested_context": state.get("digested_context", []),
@@ -151,6 +178,7 @@ class GNQNA():
 
     def manage(self, state:State) -> dict:
         # Define graph node for task orchestration
+        print("\nManaging...")
         context = state.get("context", [])
         digested_context = state.get("digested_context", [])
         answer = state.get("answer", "")
@@ -199,6 +227,15 @@ class GNQNA():
 
     def naturalize(self, state: State) -> dict:
         # Define graph node for RDF naturalization
+        print("\nNaturalizing...")
+        context = state.get("context", [])
+        processed_context = [] # flatten context
+        for doc_list in context:
+            if isinstance(doc_list, list):
+                processed_context.extend([doc.page_content for doc in \
+                        doc_list if hasattr(doc, 'page_content')])
+            elif hasattr(doc_list, 'page_content'):
+                processed_context.append(doc_list.page_content)
         prompt = f"""
         <|im_start|>system
         You are extremely good at naturalizing RDF and inferring meaning.
@@ -221,11 +258,11 @@ class GNQNA():
         Take element in the list of RDF triples one by one and
         make it sounds like Plain English. Repeat for each the subject
         which is at the start. You should return a list. Nothing else.
-        List: {state.get("context", [])}
+        List: {processed_context}
         <|im_start|>end
         <|im_start|>assistant"""
         response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Response in naturalize: {response}")
+        print(f"\nResponse in naturalize: {response}")
         if isinstance(response, str):
             start=response.find("[")
             end=response.rfind("]") + 1 # offset by 1 to make slicing
@@ -246,14 +283,15 @@ class GNQNA():
     
     def analyze(self, state:State) -> dict:
         # Define graph node for analysis and text generation
-        context = "\n".join(state.get("digested_context", []))
+        print("\nAnalysing...")
+        digested_context = "\n".join(state.get("digested_context", []))
         existing_history="\n".join(state.get("chat_history", [])) \
             if state.get("chat_history") else ""
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
         result_count = state.get("result_count", 0)
         target = state.get("target", 3)
-        if not context: # Cannot proceed without context
+        if not digested_context: # Cannot proceed without context
             should_continue = "summarize" if iterations >= max_iterations \
                 or result_count >= target else "retrieve"
             response = ""
@@ -265,7 +303,7 @@ class GNQNA():
              <|im_end|>
              <|im_start|>user
              Answer the question below using following information.
-             Context: {context}
+             Context: {digested_context}
              History: {existing_history}
              Question: {state["input"]}
              Answer:
@@ -294,6 +332,7 @@ class GNQNA():
     
     def summarize(self, state:State) -> dict:
         # Define node for summarization
+        print("\nSummarizing...")
         existing_history = state.get("chat_history", [])
         current_interaction=f"""
             User: {state["input"]}\nAssistant: {state["answer"]}"""
@@ -304,15 +343,15 @@ class GNQNA():
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
         prompt = f"""
-            <|system|>
+            <|im_start|>system
             You are an excellent and concise summary maker.
-            <|end|>
-            <|user|>
+            <|im_end|>
+            <|im_start|>user
             Summarize in bullet points the conversation below.
             Follow this format: input - answer
             Conversation: {full_context}
-            <|end|>
-            <|assistant|>"""
+            <|im_end|>
+            <|im_start|>assistant"""
         summary = GENERATIVE_MODEL.invoke(prompt).strip() # central task
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
@@ -334,6 +373,7 @@ class GNQNA():
 
     def check_relevance(self, state:State) -> dict:
         # Define node to check relevance of retrieved data
+        print("\nChecking relevance...")
         context = "\n".join(state.get("digested_context", []))
         result_count = state.get("result_count", 0)
         target = state.get("target", 3)
@@ -341,18 +381,31 @@ class GNQNA():
         max_iterations = state.get("max_iterations", 5)
         seen_documents = state.get("seen_documents", [])
         prompt = f"""
-            <|system|>
+            <|im_start|>system
             You are an expert in evaluating data relevance. You do it seriously.
-            <|end|>
-            <|user|>
-            Assess if the provided answer is relevant to the query.
+            <|im_end|>
+            <|im_start|>user
+            Assess if the provided answer is relevant to the query given context
+            Answer is relevant if the trait in query is also in the answer.
+            Return only yes or no. Nothing else.
+            Answer: The lodscore at Rs31201062 for traitBxd_18454 is 4.69
+            Query: What is the lodscore of traitBxd_18454 at locus Rs31201062?
+            Context: traitBxd_18454 has a lodScore of 4.69, a locus Rs31201062
+            <|im_end|>
+            <|im_start|>assistant
+            yes
+            <|im_end|>
+            <|im_start|>user
+            Assess if the provided answer is relevant to the query given context
+            Answer is relevant if trait in query figures in context and answer.
             Return only yes or no. Nothing else.
             Answer: {state["answer"]}
             Query: {state["input"]}
             Context: {context}
-            <|end|>
-            <|assistant|>"""
+            <|im_end|>
+            <|im_start|>assistant"""
         assessment = GENERATIVE_MODEL.invoke(prompt).strip()
+        print(f"\nAssessment in checking relevance: {assessment}")
         if assessment=="yes":
             result_count = result_count + 1
             should_continue = "summarize"
@@ -448,7 +501,7 @@ agent = GNQNA(corpus_path=CORPUS_PATH,
 
 #query = input('Please enter your query:')
 
-output = agent.answer_question('Compare lod scores for BxDPublish_12420_gemma_GWA_2822016c and BxDPublish_25846_gemma_GWA_f68884f3. Do it marker by marker.')
+output = agent.answer_question('Compare lod scores for traitBxd_12680 and traitBxd_20496. Do it locus by locus.')
 print("\nFinal answer:", output["result"])
 print("\nCitations:", output["state"]["digested_context"])
 
