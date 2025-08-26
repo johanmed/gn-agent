@@ -84,12 +84,10 @@ class GNQNA():
         # Init'ing the ensemble retriever
         bm25_retriever = BM25Retriever.from_texts(self.docs)
         bm25_retriever.k = 5   # KLUDGE: Explain why the magic number 5
-
         self.ensemble_retriever=EnsembleRetriever(
             retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
             weights = [0.3, 0.7])  # KLUDGE: Explain why the magic array
 
-    
     def corpus_to_docs(self, corpus_path: str,
                        max_docs: int = 20) -> list: # Explain magic number 20
         print("In corpus_to_docs")
@@ -169,6 +167,7 @@ class GNQNA():
 
     def retrieve(self, state: State) -> dict:
         # Define graph node for retrieval
+
         print("\nRetrieving...")
 
         prompt = f"""
@@ -453,6 +452,7 @@ class GNQNA():
 
     def initialize_langgraph_chain(self) -> Any:
         graph_builder = StateGraph(State)
+        graph_builder.add_node("manage", self.manage)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
