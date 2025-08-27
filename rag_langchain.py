@@ -41,6 +41,9 @@ CORPUS_PATH="/home/johannesm/corpus/"
 # XXX: Remove hard-coded path.
 DB_PATH="/home/johannesm/tmp/chroma_db"
 
+# XXX: Remove hard_coded path.
+PCORPUS_PATH = "home/johannesm/tmp/docs.txt"
+
 EMBED_MODEL="Qwen/Qwen3-Embedding-0.6B"
 
 # XXX: Remove hard-coded paths.
@@ -80,6 +83,7 @@ with open(SUMMARY_TEMPLATE_PATH) as summary_stream:
 @dataclass
 class GNQNA_RAG():
     corpus_path: str
+    pcorpus_path: str
     db_path: str
     rag_template: str
     retriever_template: str
@@ -94,7 +98,15 @@ class GNQNA_RAG():
     chroma_db: Any = field(init=False)
 
     def __post_init__(self):
-        self.docs=self.corpus_to_docs(self.corpus_path)
+        if not Path(self.pcorpus_path).exists():
+            self.docs = self.corpus_to_docs(self.corpus_path)
+            with open(self.pcorpus_path, 'w') as file:
+                file.write(json.dumps(self.docs))
+        else:
+            with open(self.pcorpus_path) as file:
+                data = file.read()
+                self.docs = json.loads(data)
+                
         self.chroma_db=self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
@@ -138,8 +150,7 @@ class GNQNA_RAG():
                 llm=GENERATIVE_MODEL,
                 prompt=self.retriever_prompt))
 
-    def corpus_to_docs(self, corpus_path: str,
-                       max_docs: int = 20) -> list: # Explain magic number 20
+    def corpus_to_docs(self, corpus_path: str) -> list:
         print("In corpus_to_docs")
         start = time.time()
 
@@ -185,9 +196,6 @@ class GNQNA_RAG():
 
             response = GENERATIVE_MODEL.invoke(prompt)
             print(f"Documents: {response}")
-
-            if len(docs) >= max_docs:
-                break
 
             docs.append(response)
 
@@ -243,6 +251,7 @@ class GNQNA_RAG():
 #query=input('Please enter your query:')
 rag=GNQNA_RAG(
     corpus_path=CORPUS_PATH,
+    pcorpus_path=PCORPUS_PATH,
     db_path=DB_PATH,
     rag_template=RAG_TEMPLATE,
     retriever_template=RETRIEVER_TEMPLATE,

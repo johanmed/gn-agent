@@ -36,6 +36,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 # XXX: Remove hard-coded path.
 CORPUS_PATH = "/home/johannesm/corpus/"
 
+# XXX: Remove hard_coded path.
+PCORPUS_PATH = "home/johannesm/tmp/docs.txt"
+
 # XXX: Remove hard-coded path.
 DB_PATH = "/home/johannesm/tmp/chroma_db"
 
@@ -66,6 +69,7 @@ class State(TypedDict):
 @dataclass
 class GNQNA():
     corpus_path: str
+    pcorpus_path: str
     db_path: str
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
@@ -73,8 +77,15 @@ class GNQNA():
     
     def __post_init__(self):
 
-        self.docs=self.corpus_to_docs(self.corpus_path)
-
+        if not Path(self.pcorpus_path).exists():
+            self.docs = self.corpus_to_docs(self.corpus_path)
+            with open(self.pcorpus_path, 'w') as file:
+                file.write(json.dumps(self.docs))
+        else:
+            with open(self.pcorpus_path) as file:
+                data = file.read()
+                self.docs = json.loads(data)
+                
         self.chroma_db=self.set_chroma_db(
             docs = self.docs,
             embed_model=HuggingFaceEmbeddings(
@@ -88,8 +99,7 @@ class GNQNA():
             retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
             weights = [0.3, 0.7])  # KLUDGE: Explain why the magic array
 
-    def corpus_to_docs(self, corpus_path: str,
-                       max_docs: int = 20) -> list: # Explain magic number 20
+    def corpus_to_docs(self, corpus_path: str) -> list:
         print("In corpus_to_docs")
         start = time.time()
 
@@ -104,7 +114,7 @@ class GNQNA():
 
         docs = []
 
-        for subject in set(g.subjects()):
+        for subject in tqdm(set(g.subjects())):
             text = f"{subject}:"
             for predicate, obj in g.predicate_objects(subject):
                 text += f"{predicate}:{obj}\n"
@@ -135,9 +145,6 @@ class GNQNA():
 
             response = GENERATIVE_MODEL.invoke(prompt)
             #print(f"Documents: {response}")
-
-            if len(docs) >= max_docs:
-                break
 
             docs.append(response)
 
@@ -501,7 +508,8 @@ class GNQNA():
                 "state": result}
 
 agent = GNQNA(corpus_path=CORPUS_PATH,
-    db_path=DB_PATH)
+              pcorpus_path=PCORPUS_PATH,
+              db_path=DB_PATH)
 
 #query = input('Please enter your query:')
 
