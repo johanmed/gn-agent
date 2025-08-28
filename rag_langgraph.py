@@ -37,7 +37,7 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 CORPUS_PATH = "/home/johannesm/corpus/"
 
 # XXX: Remove hard_coded path.
-PCORPUS_PATH = "home/johannesm/tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
 
 # XXX: Remove hard-coded path.
 DB_PATH = "/home/johannesm/tmp/chroma_db"
@@ -113,6 +113,7 @@ class GNQNA():
             g.parse(turtle, format='turtle')
 
         docs = []
+        total = len(set(g.subjects()))
 
         for subject in tqdm(set(g.subjects())):
             text = f"{subject}:"
@@ -147,6 +148,9 @@ class GNQNA():
             #print(f"Documents: {response}")
 
             docs.append(response)
+
+            if len(docs) >= int(total/1_000):
+                break
 
         end = time.time()
         print(f'corpus_to_docs: {end-start}')
@@ -210,14 +214,21 @@ class GNQNA():
         else:
             response = []
 
-        retrieved_docs = [self.ensemble_retriever.invoke(f"Query: {query} \
-            Exclude documents: {state.get('seen_documents', [])}") for query \
-            in response if query]
+        seen_documents = list(state.get("seen_documents", []))
+        
+        retrieved_docs = [self.ensemble_retriever.invoke(f"Query: {query}") \
+            for query in response if query]
 
+        new_docs = [doc.page_content for doc_list in retrieved_docs \
+            for doc in doc_list if hasattr(doc, 'page_content') \
+            and doc.page_content not in seen_documents]
+
+        seen_documents.extend(new_docs)
+        
         print(f"Retrieved docs in retrieve: {retrieved_docs}")
 
         return {"input": state["input"],
-                "context": retrieved_docs,
+                "context": new_docs,
                 "result_count": state.get("result_count", 0),
                 "target": state.get("target", 3),
                 "max_iterations": state.get("max_iterations", 5),
@@ -225,18 +236,17 @@ class GNQNA():
                 "iterations": state.get("iterations", 0) + 1, # Add one per run
                 "chat_history": state.get("chat_history", []),
                 "answer": state.get("answer", ""),
-                "seen_documents": state.get("seen_documents", [])}
+                "seen_documents": seen_documents}
 
     def analyze(self, state:State) -> dict:
         # Define graph node for analysis and text generation
         print("\nAnalysing...")
 
-        context = "\n".join(doc.page_content for doc_list in \
-            state.get("context", []) for doc in doc_list if \
-            hasattr(doc, 'page_content')) if state.get("context", []) else ""
+        context = "\n".join(state.get("context", [])) \
+            if state.get("context", []) else ""
 
         existing_history="\n".join(state.get("chat_history", [])) \
-            if state.get("chat_history") else ""
+            if state.get("chat_history", []) else ""
 
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
@@ -287,16 +297,14 @@ class GNQNA():
     def check_relevance(self, state:State) -> dict:
         # Define node to check relevance of retrieved data
         print("\nChecking relevance...")
-
-        context = "\n".join(doc.page_content for doc_list in \
-            state.get("context", []) for doc in doc_list if \
-            hasattr(doc, 'page_content')) if state.get("context", []) else ""
+        
+        context = "\n".join(state.get("context", [])) \
+            if state.get("context", []) else ""
 
         result_count = state.get("result_count", 0)
         target = state.get("target", 3)
         iterations = state.get("iterations", 0)
         max_iterations = state.get("max_iterations", 5)
-        seen_documents = state.get("seen_documents", [])
 
         prompt = f"""
             <|im_start|>system
@@ -333,12 +341,7 @@ class GNQNA():
             should_continue = "finalize"
         else:
             should_continue = "retrieve"
-
-        if context:
-            for doc_list in state.get("context", []):
-                seen_documents.extend([doc.page_content for doc in doc_list \
-                if hasattr(doc, "page_content")])
-
+        
         return {"input": state["input"],
                 "context": state.get("context", []),
                 "iterations": iterations,
@@ -346,7 +349,7 @@ class GNQNA():
                 "answer": state["answer"],
                 "result_count": result_count,
                 "target": target,
-                "seen_documents": seen_documents,
+                "seen_documents": state.get("seen_documents", []),
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
 
@@ -438,28 +441,9 @@ class GNQNA():
                 "target": state.get("target", 3),
                 "chat_history": state.get("chat_history", []),
                 "seen_documents": state.get("seen_documents", [])}
-    
-    def route_manage(self, state: State) -> str:
-        # Function for conditional routing at manage
-        should_continue = state.get("should_continue", "retrieve")
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 5)
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-        context = state.get("context", [])
-        answer = state.get("answer", "")
-
-        if iterations >= max_iterations or result_count >= target:
-            return "finalize"
-        elif should_continue not in ["retrieve" \
-                "check_relevance", "analyze", "summarize", "finalize"]:
-            return "finalize"
-        else:
-            return "retrieve"
 
     def initialize_langgraph_chain(self) -> Any:
         graph_builder = StateGraph(State)
-        graph_builder.add_node("manage", self.manage)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
@@ -472,7 +456,7 @@ class GNQNA():
         graph_builder.add_edge("finalize", END)
         graph_builder.add_conditional_edges(
             "summarize",
-            self.route_manage,
+            lambda state: state.get("should_continue", "finalize"),
             {"retrieve": "retrieve",
              "finalize": "finalize"})
         graph=graph_builder.compile()
