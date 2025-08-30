@@ -1,10 +1,10 @@
 """
 This scripts runs through a demo on the use of a multi-agent system for genomic analysis
 Embedding model = Qwen/Qwen3-Embedding-0.6B
-Generative model = calme-3.2-instruct-78b-Q4_K_S
+Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
+Summary model = Phi-3-mini-4k-instruct (small model)
 Author: Johannes Medagbe
 """
-import click
 import os
 import sys
 import time
@@ -53,18 +53,21 @@ GENERATIVE_MODEL = LlamaCpp(
     temperature=0,
     verbose=False)
 
+# XXX: Remove hard-coded paths.
+SUMMARY_MODEL=LlamaCpp(
+    model_path="/home/johannesm/pretrained_models/Phi-3-mini-4k-instruct-fp16.gguf",
+    max_tokens=1_000,
+    n_ctx=4_096,
+    seed=2025,
+    temperature=0,
+    verbose=False)
 
 class State(TypedDict):
     input: str
     chat_history: list[str]
     context: list[str]
     answer: str
-    result_count: int
-    iterations: int
     should_continue: str
-    target: int
-    max_iterations: int
-    seen_documents: list
     
 @dataclass
 class GNQNA():
@@ -74,7 +77,12 @@ class GNQNA():
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    
+    generative_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
+    summary_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
+    retriever_lock: asyncio.Lock = field(init=False, \
+        default_factory=asyncio.Lock)
     def __post_init__(self):
 
         if not Path(self.pcorpus_path).exists():
@@ -93,11 +101,11 @@ class GNQNA():
             db_path=self.db_path)
 
         # Init'ing the ensemble retriever
-        bm25_retriever = BM25Retriever.from_texts(self.docs)
-        bm25_retriever.k = 5   # KLUDGE: Explain why the magic number 5
+        # Explain magic numbers and magic array
+        bm25_retriever = BM25Retriever.from_texts(self.docs, k=5)
         self.ensemble_retriever=EnsembleRetriever(
-            retrievers = [self.chroma_db.as_retriever(), bm25_retriever],
-            weights = [0.3, 0.7])  # KLUDGE: Explain why the magic array
+            retrievers = [self.chroma_db.as_retriever( \
+                search_kwargs={"k": 5}), bm25_retriever], weights=[0.4, 0.6])
 
     def corpus_to_docs(self, corpus_path: str) -> list:
         print("In corpus_to_docs")
@@ -149,7 +157,7 @@ class GNQNA():
 
             docs.append(response)
 
-            if len(docs) >= int(total/1_000):
+            if len(docs) >= int(total/500):
                 break
 
         end = time.time()
@@ -176,35 +184,35 @@ class GNQNA():
                     db.persist()
                 return db
 
-    def retrieve(self, state: State) -> dict:
-        # Define graph node for retrieval
+    async def retrieve(self, state: State) -> dict:
 
-        print("\nRetrieving...")
+        # Retrieve documents
+        print("\nRetrieving")
 
         prompt = f"""
-        <im_start>system
-        You are powerful query generator and you strictly return
-        what is asked for.
-        <im_end>
-        <im_start>user
+        <|im_start|>system
+        You are powerful query generator and you strictly follow instructions
+        <|im_end|>
+        <|im_start|>user
         Generate a list of queries to retrieve relevant documents relevant to
-        the question below.
+        the question below. Return only the list, nothing else.
         Question: Compare lodscore at Rs2120 for traitBxd_12680
         and traitBxd_20496
         Answer:
-        <im_end>
-        <im_start>assistant
+        <|im_end|>
+        <|im_start|>assistant
         ["lodscore at Rs2120 for traitBxd_12680",
         "lodscore at Rs2120 for traitBxd_20496"]
-        <im_end>
-        <im_start>user
+        <|im_end|>
+        <|im_start|>user
         Generate a list of queries to retrieve relevant documents relevant to
-        the question below.
+        the question below. Return only the list, nothing else.
         Question: {state['input']}
-        <im_end>
-        <im_start>assistant"""
+        <|im_end|>
+        <|im_start|>assistant"""
 
-        response = GENERATIVE_MODEL.invoke(prompt)
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
         print(f"\nResponse in retrieve: {response}")
 
         if isinstance(response, str):
@@ -213,34 +221,30 @@ class GNQNA():
             response = json.loads(response[start:end])
         else:
             response = []
-
-        seen_documents = list(state.get("seen_documents", []))
         
-        retrieved_docs = [self.ensemble_retriever.invoke(f"Query: {query}") \
-            for query in response if query]
-
+        retrieved_docs = []
+        async with self.retriever_lock:
+            for query in response:
+                if query:
+                    retrieved_docs.append(self.ensemble_retriever.invoke(query))
+               
         new_docs = [doc.page_content for doc_list in retrieved_docs \
-            for doc in doc_list if hasattr(doc, 'page_content') \
-            and doc.page_content not in seen_documents]
-
-        seen_documents.extend(new_docs)
+            for doc in doc_list if hasattr(doc, 'page_content')]
         
-        print(f"Retrieved docs in retrieve: {retrieved_docs}")
+        print(f"Retrieved docs in retrieve: {new_docs}")
 
+        should_continue = "analyze"
+        
         return {"input": state["input"],
                 "context": new_docs,
-                "result_count": state.get("result_count", 0),
-                "target": state.get("target", 3),
-                "max_iterations": state.get("max_iterations", 5),
-                "should_continue": "analyze",
-                "iterations": state.get("iterations", 0) + 1, # Add one per run
+                "should_continue": should_continue,
                 "chat_history": state.get("chat_history", []),
-                "answer": state.get("answer", ""),
-                "seen_documents": seen_documents}
+                "answer": state.get("answer", "")}
 
-    def analyze(self, state:State) -> dict:
-        # Define graph node for analysis and text generation
-        print("\nAnalysing...")
+    async def analyze(self, state:State) -> dict:
+
+        # Analyze documents
+        print("\nAnalysing")
 
         context = "\n".join(state.get("context", [])) \
             if state.get("context", []) else ""
@@ -248,17 +252,7 @@ class GNQNA():
         existing_history="\n".join(state.get("chat_history", [])) \
             if state.get("chat_history", []) else ""
 
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 5)
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-
-        if not context: # Cannot proceed without context
-            should_continue = "finalize" if iterations >= max_iterations \
-                or result_count >= target else "retrieve"
-            response = ""
-        else:
-            prompt = f"""
+        prompt = f"""
              <|im_start|>system
              You are an experienced analyst that can use available information
              to provide accurate and concise feedback.
@@ -271,40 +265,25 @@ class GNQNA():
              Answer:
              <|im_end|>
              <|im_start|>assistant"""
-
+        async with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-            print(f"\nResponse in analyze: {response}")
+        print(f"\nResponse in analyze: {response}")
 
-            if not response or not isinstance(response, str) or \
-                    response.strip() == "": # Need valid generation
-                should_continue = "summarize" if iterations >= max_iterations \
-                    or result_count >= target else "retrieve"
-                response = ""  # Ensure a clean state
-            else:
-                should_continue = "check_relevance"
+        should_continue = "check_relevance"
 
         return {"input": state["input"],
                 "answer": response,
                 "should_continue": should_continue,
                 "context": state.get("context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "result_count": result_count,
-                "target": target,
-                "chat_history": state.get("chat_history", []),
-                "seen_documents": state.get("seen_documents", [])}
+                "chat_history": state.get("chat_history", [])}
 
-    def check_relevance(self, state:State) -> dict:
-        # Define node to check relevance of retrieved data
+    async def check_relevance(self, state:State) -> dict:
+
+        # Check relevance of retrieved data
         print("\nChecking relevance...")
         
         context = "\n".join(state.get("context", [])) \
             if state.get("context", []) else ""
-
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 5)
 
         prompt = f"""
             <|im_start|>system
@@ -313,7 +292,7 @@ class GNQNA():
             <|im_start|>user
             Assess if the provided answer is relevant to the query given context
             Answer is relevant if the trait in query is also in the answer.
-            Return only yes or no. Nothing else.
+            Return strictly your answer as yes or no. Do not add anything else.
             Answer: The lodscore at Rs31201062 for traitBxd_18454 is 4.69
             Query: What is the lodscore of traitBxd_18454 at locus Rs31201062?
             Context: traitBxd_18454 has a lodScore of 4.69, a locus Rs31201062
@@ -324,38 +303,32 @@ class GNQNA():
             <|im_start|>user
             Assess if the provided answer is relevant to the query given context
             Answer is relevant if trait in query figures in context and answer.
-            Return only yes or no. Nothing else.
+            Return strictly your answer as yes or no. Do not add anything else.
             Answer: {state["answer"]}
             Query: {state["input"]}
             Context: {context}
             <|im_end|>
             <|im_start|>assistant"""
-
-        assessment = GENERATIVE_MODEL.invoke(prompt).strip()
-        #print(f"\nAssessment in checking relevance: {assessment}")
+        async with self.generative_lock:
+            assessment = GENERATIVE_MODEL.invoke(prompt)
+        print(f"\nAssessment in checking relevance: {assessment}")
 
         if "yes" in assessment:
-            result_count = result_count + 1
             should_continue = "summarize"
-        elif result_count >= target or iterations >= max_iterations:
-            should_continue = "finalize"
         else:
-            should_continue = "retrieve"
-        
+            should_continue = "end"
+            
         return {"input": state["input"],
                 "context": state.get("context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
                 "answer": state["answer"],
-                "result_count": result_count,
-                "target": target,
-                "seen_documents": state.get("seen_documents", []),
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
 
-    def summarize(self, state:State) -> dict:
-        # Define node for summarization
-        print("\nSummarizing...")
+    async def summarize(self, state:State) -> dict:
+
+        # Summarize
+        print("\nSummarizing")
+        
         existing_history = state.get("chat_history", [])
 
         current_interaction=f"""
@@ -363,11 +336,6 @@ class GNQNA():
 
         full_context = "\n".join(existing_history) + "\n" + \
             current_interaction if existing_history else current_interaction
-
-        result_count = state.get("result_count", 0)
-        target = state.get("target", 3)
-        iterations = state.get("iterations", 0)
-        max_iterations = state.get("max_iterations", 5)
 
         prompt = f"""
             <|im_start|>system
@@ -379,86 +347,61 @@ class GNQNA():
             Conversation: {full_context}
             <|im_end|>
             <|im_start|>assistant"""
-
-        summary = GENERATIVE_MODEL.invoke(prompt).strip()
+        async with self.generative_lock:
+            summary = GENERATIVE_MODEL.invoke(prompt)
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
 
-        should_continue="finalize" if result_count >= target or \
-            iterations >= max_iterations else "retrieve"
-
         updated_history = existing_history + [summary] # update chat_history
-        #print(f"\nChat history in summarize: {updated_history}")
+        print(f"\nChat history in summarize: {updated_history}")
 
-        return {"input": state["input"],
-                "answer": summary,
-                "should_continue": should_continue,
-                "context": state.get("context", []),
-                "iterations": iterations,
-                "max_iterations": max_iterations,
-                "result_count": result_count,
-                "target": target,
-                "chat_history": updated_history,
-                "seen_documents": state.get("seen_documents", [])}
-
-    def finalize(self, state: State) -> dict:
-        print("\nFinalizing...")
-
-        full_history = "\n".join(state.get("chat_history", [])) \
-            if state.get("chat_history") else ""
-
-        if not full_history:
+        # Generate final answer
+        if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
             prompt = f"""
-            <|im_start|>system
+            <|system|>
             You are an expert synthesizer. Compile the following summarized \
             interactions into a single, well-structured paragraph that answers \
             the original question coherently. \
             Ensure the response is insightful, concise, and draws \
             logical inferences where possible.
-            <|im_end|>
-            <|im_start|>user
+            <|end|>
+            <|user|>
             Original question: {state["input"]}
-            Summarized history: {full_history}
+            Summarized history: {updated_history}
             Provide only the final paragraph, nothing else.
-            <|im_end|>
-            <|im_start|>assistant"""
-        
-            response = GENERATIVE_MODEL.invoke(prompt).strip()
-            print(f"Response in finalizing: {response}")
+            <|end|>
+            <|assistant|>"""
+            
+            async with self.summary_lock:
+                response = SUMMARY_MODEL.invoke(prompt)
+            print(f"Answer in summarize: {response}")
 
-            final_answer = response if response else "Sorry, we are unable to \
+            proc_answer = response if response else "Sorry, we are unable to \
             provide a valuable feedback due to lack of relevant data."
 
         return {"input": state["input"],
-                "answer": final_answer,
+                "answer": proc_answer,
                 "context": state.get("context", []),
-                "iterations": state.get("iterations", 0),
-                "max_iterations": state.get("max_iterations", 5),
-                "result_count": state.get("result_count", 0),
-                "target": state.get("target", 3),
-                "chat_history": state.get("chat_history", []),
-                "seen_documents": state.get("seen_documents", [])}
-
+                "chat_history": updated_history}
+    
     def initialize_langgraph_chain(self) -> Any:
         graph_builder = StateGraph(State)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
         graph_builder.add_node("summarize", self.summarize)
-        graph_builder.add_node("finalize", self.finalize)
         graph_builder.add_edge(START, "retrieve")
         graph_builder.add_edge("retrieve", "analyze")
         graph_builder.add_edge("analyze", "check_relevance")
-        graph_builder.add_edge("check_relevance", "summarize")
-        graph_builder.add_edge("finalize", END)
+        graph_builder.add_edge("summarize", END)
         graph_builder.add_conditional_edges(
-            "summarize",
-            lambda state: state.get("should_continue", "finalize"),
-            {"retrieve": "retrieve",
-             "finalize": "finalize"})
+            "check_relevance",
+            lambda state: state.get("should_continue", "summarize"),
+            {"summarize": "summarize",
+             "end": END})
         graph=graph_builder.compile()
 
         return graph
@@ -469,36 +412,127 @@ class GNQNA():
             "input": question,
             "chat_history": [],
             "context": [],
-            "seen_documents": [],
             "answer": "",
-            "iterations": 0,
-            "result_count": 0,
-            "should_continue": "retrieve",
-            "target": 3,  # Explain magic number 3
-            "max_iterations": 5 # Explain magic number 5
-        }
+            "should_continue": "retrieve"}
+        
         result = await graph.ainvoke(initial_state) # Run graph asynchronously
 
         return result
 
+    async def split_query(self, query: str) -> list[str]:
+
+        print("\nSplitting query")
+        
+        prompt = f"""
+            <|im_start|>system
+            You are a query splitter.
+            Split the query into independent subqueries based on sentences.
+            If it's a single sentence, return a list with one item.
+            Return strictly a JSON list of strings, nothing else.
+            <|im_end|>
+            <|im_start|>user
+            Query: Identify traits with lod score > 4.0 at specific locus.
+            Compare lod scores per locus.
+            <|im_end|>
+            <|im_start|>assistant
+            ["Identify traits with lod score > 4.0 at specific locus", 
+            "Compare lod scores per locus"]
+            <|im_end|>
+            <|im_start|>user
+            Query: Collect lod scores on chromosome 1 and 2 for traits A and B.
+            Tell markers with similar lod scores.
+            <|im_end|>
+            <|im_start|>assistant
+            ["Collect lod scores on chromosome 1 and 2 for traits A and B", \
+            "Tell markers with similar lod scores"]
+            <|im_start|>user
+            Query: {query}
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
+        if isinstance(response, str):
+            start = response.find("[")
+            end = response.rfind("]") + 1
+            subqueries = json.loads(response[start:end])
+        else:
+            subqueries = [query]
+
+        return subqueries
+
+    async def finalize(self, query: str,
+                 subqueries: list[str],
+                 answers: list[str]) -> dict:
+
+        print("\nFinalizing")
+
+        prompt = f"""
+            <|im_start|>system
+            You are an expert synthesizer. Given the subqueries and \
+            corresponding answers, generate a comprehensive response to the \
+            query. Ensure the response is insightful, concise, and draws \
+            logical inferences where possible.
+            <|im_end|>
+            <|im_start|>user
+            Query: {query}
+            Subqueries: {subqueries}
+            Answers: {answers}
+            Provide only the overall response, nothing else.
+            <|im_end|>
+            <|im_start|>assistant"""
+        async with self.generative_lock:
+            response = GENERATIVE_MODEL.invoke(prompt)
+        print(f"Response in finalize: {response}")
+
+        final_answer = response if response else "Sorry, we are unable to \
+            provide an overall feedback due to lack of relevant data."
+
+        return final_answer
+
+    async def manage_subtasks(self, question: str) -> dict:
+
+        # Manage multiple calls or subqueries
+
+        subqueries = await self.split_query(question)
+        tasks = [self.invoke_langgraph(subquery) for subquery in subqueries]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        answers = []
+        for id, result in enumerate(results):
+            if isinstance(result, Exception):
+                answers.append(f"Error in subquery {subqueries[id]}: \
+                    {str(result)}")
+            else:
+                answers.append(result.get("answer", \
+                    "No answer generated for this subquery."))
+
+        concatenated_answer = await self.finalize(question, subqueries, answers)
+
+        return {"result": concatenated_answer,
+                "states": results}
     
-    def answer_question(self, question: str) -> Any:
+    async def answer_question(self, question: str) -> Any:
         start = time.time()
-        result = asyncio.run(self.invoke_langgraph(question))
+        result = await self.manage_subtasks(question)
         end = time.time()
         print(f'answer_question: {end-start}')
 
-        return {"result": result.get("answer", "No final answer generated"),
-                "state": result}
+        return result
 
-agent = GNQNA(corpus_path=CORPUS_PATH,
+async def main():
+    agent = GNQNA(corpus_path=CORPUS_PATH,
               pcorpus_path=PCORPUS_PATH,
               db_path=DB_PATH)
 
-#query = input('Please enter your query:')
+    #query = input('Please enter your query:')
 
-output = agent.answer_question('Identify traits having a lod score > 4.0')
-print("\nFinal answer:", output["result"])
+    output = await agent.answer_question('Identify markers having a \
+        lod score > 4.0. Find the traits related to the markers. \
+        Confirm that the traits are for lod scores > 4.0.')
+    print("\nFinal answer:", output)
 
-GENERATIVE_MODEL.client.close()
+    GENERATIVE_MODEL.client.close()
+    SUMMARY_MODEL.client.close()
 
+if __name__ == "__main__":
+    asyncio.run(main())

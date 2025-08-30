@@ -6,7 +6,6 @@ Summary model = Phi-3-mini-4k-instruct-fp16
 Author: Johannes Medagbe
 Editor: Bonface Munyoki
 """
-import click
 import os
 import sys
 import time
@@ -66,7 +65,6 @@ SUMMARY_MODEL=LlamaCpp(
 
 
 # Our templates for our simple RAG system
-RAG_TEMPLATE, RETRIEVER_TEMPLATE, SUMMARY_TEMPLATE="", "", ""
 
 # XX: Remove hard-coded paths.
 RAG_TEMPLATE_PATH="rag_template.txt"
@@ -164,7 +162,8 @@ class GNQNA_RAG():
             g.parse(turtle, format='turtle')
 
         docs = []
-
+        total = len(set(g.subjects))
+        
         for subject in set(g.subjects()):
             text = f"{subject}:"
             for predicate, obj in g.predicate_objects(subject):
@@ -198,6 +197,9 @@ class GNQNA_RAG():
             print(f"Documents: {response}")
 
             docs.append(response)
+
+            if len(docs) >= int(total/1_000):
+                break
 
         end = time.time()
         print(f'corpus_to_docs: {end-start}')
