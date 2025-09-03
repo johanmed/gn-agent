@@ -501,7 +501,7 @@ class GNQNA():
             Result:
             <|im_end|>
             <|im_start|>assistant
-            ["Collect lod scores on chromosome 1 and 2 for traits A and B", \
+            ["Collect lod scores on chromosome 1 and 2 for traits A and B",
             "Tell markers with similar lod scores"]
             <|im_start|>user
             Query:
