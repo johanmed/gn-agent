@@ -12,7 +12,8 @@ The system uses:
 ## Set up
 You will need a Python environment with a number of dependencies to run this project. Tools required include:
 - langchain
+- langgraph
 - llama-cpp-python
 - chroma-db
 - sparqlwrapper
-- click
+You dont need to install them one by one. Create your own Python environment and do `pip install -r requirements.txt`

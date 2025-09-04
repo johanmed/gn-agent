@@ -611,8 +611,8 @@ async def main():
 
     #query = input('Please enter your query:')
 
-    output = await agent.answer_question("Extract traits and markers having a \
-        lod score > 4.0 from the database. Extract trait descriptions.")
+    output = await agent.answer_question("Knowing that traits have long code\
+    and markers short code, identify traits and markers with a lod score > 4.0.\    Tell me what traits are involved in biology.")
     print("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
