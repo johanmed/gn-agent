@@ -304,6 +304,8 @@ class GNQNA():
 
         # Check relevance of retrieved data
         print("\nChecking relevance")
+
+        answer = state["answer"]
         
         prompt = f"""
             <|system|>
@@ -325,7 +327,7 @@ class GNQNA():
             <|end|>
             <|user|>
             Answer:
-            {state["answer"]}
+            {answer}
             Query:
             {state["input"]}
             Decision:
@@ -340,10 +342,12 @@ class GNQNA():
             should_continue = "summarize"
         else:
             should_continue = "end"
+            answer = "Sorry, we are unable to \
+                provide a valuable feedback due to lack of relevant data."
             
         return {"input": state["input"],
                 "context": state.get("context", []),
-                "answer": state["answer"],
+                "answer": answer,
                 "chat_history": state.get("chat_history", []),
                 "should_continue": should_continue}
 
@@ -414,8 +418,8 @@ class GNQNA():
             Original question:
             Take traits and B and compare their lod scores at Rs71192
             Summarized history:
-            Traits A and B involved in diabetes have a lod score of\
-            1.9 and 4.7 at Rs71192.
+            ["Traits A and B involved in diabetes have a lod score of\
+            1.9 and 4.7 at Rs71192"]
             Conclusion:
             <|im_end|>
             <|im_start|>assistant
