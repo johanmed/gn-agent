@@ -1,8 +1,10 @@
 """
-This scripts runs through a demo on the use of a multi-agent system for genomic analysis
-Embedding model = Qwen/Qwen3-Embedding-0.6B
-Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
-Summary model = Phi-3-mini-4k-instruct (small model)
+This a multi-agent system for genomic analysis
+
+1. Embedding model = Qwen/Qwen3-Embedding-0.6B
+2. Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
+3. Summary model = Phi-3-mini-4k-instruct (small model)
+
 Author: Johannes Medagbe
 """
 import os
@@ -32,6 +34,7 @@ from glob import glob
 from tqdm import tqdm
 
 import warnings
+
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
@@ -158,9 +161,6 @@ class GNQNA():
 
             docs.append(response)
 
-            if len(docs) >= int(total/500):
-                break
-
         end = time.time()
         print(f'corpus_to_docs: {end-start}')
 
@@ -258,7 +258,9 @@ class GNQNA():
              You are an experienced data analyst who provides accurate and\
              concise feedback.
              Answer the question below using provided information.
-             Give your response in 100 words max and quickly.
+             Do not modify entities names such as trait and marker.
+             Give your response in 200 words max.
+             Do not repeat answers.
              <|im_end|>
              <|im_start|>user
              Context:
@@ -273,6 +275,7 @@ class GNQNA():
              <|im_start|>assistant
              Trait A and B have a lod score of 2.9 and 3.5 respectively at\
              Rsm1001.
+             <|im_end|>
              <|im_start|>user
              Context:
              {context}
@@ -286,6 +289,7 @@ class GNQNA():
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
+            response = ' '.join(response.split(' ')[:200]) # constraint
         print(f"\nResponse in analyze: {response}")
 
         should_continue = "check_relevance"
@@ -299,13 +303,15 @@ class GNQNA():
     def check_relevance(self, state:State) -> dict:
 
         # Check relevance of retrieved data
-        print("\nChecking relevance...")
+        print("\nChecking relevance")
         
         prompt = f"""
             <|system|>
             You are an expert in evaluating data relevance. You do it seriously.
-            Assess if provided answer is relevant to the query.
-            Return strictly your answer as yes or no. Do not add anything else.
+            Assess if provided answer can help address the query.
+            An answer that addresses a subquestion of the query is \
+            still relevant.
+            Return strictly "yes" or "no". Do not add anything else.
             <|end|>
             <|user|>
             Answer:
@@ -358,7 +364,9 @@ class GNQNA():
             <|system|>
             You are an excellent and concise summary maker.
             Summarize in bullet points the conversation below.
-            Give your response in 100 words max and quickly.
+            Do not modify entities names such as trait and marker.
+            Give your response in 100 words max.
+            Do not repeat answers.
             <|end|>
             <|user|>
             Conversation:
@@ -399,7 +407,8 @@ class GNQNA():
             Ensure the response is insightful, concise, and draws\
             logical inferences where possible.
             Provide only the final paragraph, nothing else.
-            Give your response in 75 words max and quickly.
+            Give your response in 100 words max.
+            Do not repeat answers.
             <|im_end|>
             <|im_start|>user
             Original question:
@@ -496,6 +505,7 @@ class GNQNA():
             <|im_start|>assistant
             ["Collect lod scores on chromosome 1 and 2 for traits A and B",
             "Tell markers with similar lod scores"]
+            <|im_end|>
             <|im_start|>user
             Query:
             {query}
@@ -528,8 +538,12 @@ class GNQNA():
             corresponding answers, generate a comprehensive explanation to\
             address the query using all information provided. Ensure the\
             response is insightful, concise, and draws logical inferences \
-            where possible. Provide only the story, nothing else.
-            Use only 100 words max.
+            where possible.
+            Do not modify entities names such as trait and marker.            
+            Make sure to link based on what is common in the answers.
+            Provide only the story, nothing else.
+            Do not repeat answers.
+            Use only 200 words max.
             <|im_end|>
             <|im_start|>user
             Query:
@@ -611,8 +625,10 @@ async def main():
 
     #query = input('Please enter your query:')
 
-    output = await agent.answer_question("Knowing that traits have long code\
-    and markers short code, identify traits and markers with a lod score > 4.0.\    Tell me what traits are involved in biology.")
+    output = await agent.answer_question(
+    """
+    Knowing that traits have long code and markers short code, identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what marker Rsm10000011643 is involved in biology.
+    """)
     print("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
