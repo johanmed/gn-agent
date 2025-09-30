@@ -501,19 +501,19 @@ class GNQNA:
             You are a very powerful task generator.
         
             Split the query into task and context based on tags.
-            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions are independent.
+            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions are atomic and do not rely on each other.
             Return the subquestions.
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
             <|im_start|>user
             Query:
-            Task: Identify traits having a lod score > 4.0 at the same marker position.
-            Context: Traits have long names and contain generally strings like GWA or GEMMA. A marker is way shorter and can start with Rs or Rsm. The goal is to find if any marker is significantly associated to one or more traits.
+            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what marker Rsm10000011643 is involved in biology.
+            Context: A trait has a long name and contain generally strings like GWA or GEMMA. The goal is to know the biological processes which might be related to the marker previously mentioned.
         
             Result:
             <|im_end|>
             <|im_start|>assistant
-            ["Which variables with long names have a lod value greater than 4.0 for the same Rs or Rsm?"]
+            ["What traits (containing GWA or GEMMA) have a lod score > 3.0 at Rsm10000011643?", "Which biological processes are related to Rsm10000011643?"]
             <|im_end|>
             <|im_start|>user
             Query:
