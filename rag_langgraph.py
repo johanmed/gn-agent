@@ -502,7 +502,7 @@ class GNQNA:
         
             Split the query into task and context based on tags.
             Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions are atomic and do not rely on each other.
-            Return the subquestions.
+            Return only the subquestions.
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
             <|im_start|>user
