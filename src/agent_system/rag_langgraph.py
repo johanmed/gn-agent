@@ -1,19 +1,16 @@
 """
 This a multi-agent system for genomic analysis
 
-1. Embedding model = Qwen/Qwen3-Embedding-0.6B
-2. Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
-3. Summary model = Phi-3-mini-4k-instruct (small model)
-
-Author: Johannes Medagbe (c) 2025
+Author: Johannes Medagbe
+Copyright 2025
 """
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from glob import glob
@@ -23,46 +20,17 @@ from typing import Any
 
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import LlamaCpp
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import TypedDict
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-
-# XXX: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/rdf_corpus/"
-
-# XXX: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/rdf_tmp/docs.txt"
-
-# XXX: Remove hard-coded path.
-DB_PATH = "/home/johannesm/rdf_tmp/chroma_db"
-
-EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
-
-# XXX: Remove hard-coded paths.
-GENERATIVE_MODEL = LlamaCpp(
-    model_path="/home/johannesm/pretrained_models/calme-3.2-instruct-78b-Q4_K_S.gguf",
-    max_tokens=10_000,
-    n_ctx=32_768,
-    seed=2_025,
-    temperature=0,
-    verbose=False,
-)
-
-# XXX: Remove hard-coded paths.
-SUMMARY_MODEL = LlamaCpp(
-    model_path="/home/johannesm/pretrained_models/Phi-3-mini-4k-instruct-fp16.gguf",
-    max_tokens=1_000,
-    n_ctx=4_096,
-    seed=2025,
-    temperature=0,
-    verbose=False,
-)
+from config import *
+from prompts import *
+from question import question
 
 
 class State(TypedDict):
@@ -114,8 +82,7 @@ class GNQNA:
         )
 
     def corpus_to_docs(self, corpus_path: str) -> list:
-        print("In corpus_to_docs")
-        start = time.time()
+        logging.info("In corpus_to_docs")
 
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
@@ -134,28 +101,7 @@ class GNQNA:
             for predicate, obj in g.predicate_objects(subject):
                 text += f"{predicate}:{obj}\n"
 
-            prompt = f"""
-                <|im_start|>system
-                You are extremely good at naturalizing RDF and inferring meaning
-                <|im_end|>
-                <|im_start|>user
-                Take following data and make it sound like Plain English.
-                You should return a coherent paragraph with clear sentences.
-                Data: "http://genenetwork.org/id/traitBxd_20537:\
-                http://purl.org/dc/terms/isReferencedBy: \
-                http://genenetwork.org/id/unpublished22893\n \
-                http://genenetwork.org/term/locus: \
-                http://genenetwork.org/id/Rsm10000002554"
-                <|im_end|>
-                <|im_start|>assistant
-                Result: "traitBxd_20537 is referenced by unpublished22893 and has been tested for Rsm10000002554"
-                <|im_end|>
-                <|im_start|>user
-                Take following RDF data andmake it sound like Plain English.
-                You should return a coherent paragraph with clear sentences.
-                Data: {text}
-                <|im_start|>end
-                <|im_start|>assistant"""
+            prompt = naturalize_prompt
 
             with self.generative_lock:
                 response = GENERATIVE_MODEL.invoke(prompt)
@@ -163,61 +109,40 @@ class GNQNA:
 
             docs.append(response)
 
-            if len(docs) > total/10:
+            if len(docs) > total / 10:
                 break
-
-        end = time.time()
-        print(f"corpus_to_docs: {end-start}")
 
         return docs
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 500
     ) -> Any:
-        print("In set_chroma_db")
-        match Path(db_path).exists():
-            case True:
-                db = Chroma(persist_directory=db_path, embedding_function=embed_model)
-                return db
-            case _:
-                for i in tqdm(range(0, len(docs), chunk_size)):
-                    chunk = docs[i : i + chunk_size]
-                    db = Chroma.from_texts(
-                        texts=chunk, embedding=embed_model, persist_directory=db_path
-                    )
-                    db.persist()
-                return db
+        logging.info("In set_chroma_db")
+        if Path(db_path).exists():
+            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            return db
+        else:
+            for i in tqdm(range(0, len(docs), chunk_size)):
+                chunk = docs[i : i + chunk_size]
+                document = Document(
+                    page_content=chunk, metadata={"source": f"Document {i}"}
+                )
+                db = Chroma.from_texts(
+                    texts=document, embedding=embed_model, persist_directory=db_path
+                )
+                db.persist()
+            return db
 
     def retrieve(self, state: State) -> dict:
 
         # Retrieve documents
-        print("\nRetrieving")
+        logging.info("\nRetrieving")
 
-        prompt = f"""
-        <|im_start|>system
-        You are powerful query generator and you strictly follow instructions.
-        Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Return only a valid list, nothing else.
-        <|im_end|>
-        <|im_start|>user
-        Question:
-        Compare lodscore at Rs2120 for traitBxd_12680 and traitBxd_20496
-        Answer:
-        <|im_end|>
-        <|im_start|>assistant
-        ["lodscore at Rs2120 for traitBxd_12680",
-        "lodscore at Rs2120 for traitBxd_20496"]
-        <|im_end|>
-        <|im_start|>user
-        Question:
-        {state['input']}
-        Answer:
-        <|im_end|>
-        <|im_start|>assistant"""
+        prompt = retriever_prompt
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"\nResponse in retrieve: {response}")
+        logging.info(f"\nResponse in retrieve: {response}")
 
         if isinstance(response, str):
             start = response.find("[")
@@ -239,7 +164,7 @@ class GNQNA:
             if hasattr(doc, "page_content")
         ]
 
-        print(f"Retrieved docs in retrieve: {new_docs}")
+        logging.info(f"Retrieved docs in retrieve: {new_docs}")
 
         should_continue = "analyze"
 
@@ -254,7 +179,7 @@ class GNQNA:
     def analyze(self, state: State) -> dict:
 
         # Analyze documents
-        print("\nAnalysing")
+        logging.info("\nAnalysing")
 
         context = (
             "\n".join(state.get("context", [])) if state.get("context", []) else ""
@@ -266,42 +191,12 @@ class GNQNA:
             else ""
         )
 
-        prompt = f"""
-             <|im_start|>system
-             You are an experienced data analyst who provides accurate and concise feedback.
-             Answer the question below using provided information.
-             Do not modify entities names such as trait and marker.
-             Give your response in 200 words max. Do not repeat answers.
-             <|im_end|>
-             <|im_start|>user
-             Context:
-             Trait A has a lod score of 2.9 at the marker Rsm1001.
-             Trait B has a lod score of 3.5 for Rsm1001.
-             History:
-             No lod score found for trait A and B so far.
-             Question:
-             What is the lod score of trait A and B at marker Rsm1001?
-             Answer:
-             <|im_end|>
-             <|im_start|>assistant
-             Trait A and B have a lod score of 2.9 and 3.5 respectively at\
-             Rsm1001.
-             <|im_end|>
-             <|im_start|>user
-             Context:
-             {context}
-             History:
-             {existing_history}
-             Question:
-             {state["input"]}
-             Answer:
-             <|im_end|>
-             <|im_start|>assistant"""
+        prompt = analyze_prompt
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
             response = " ".join(response.split(" ")[:200])  # constraint
-        print(f"\nResponse in analyze: {response}")
+        logging.info(f"\nResponse in analyze: {response}")
 
         should_continue = "check_relevance"
 
@@ -316,39 +211,15 @@ class GNQNA:
     def check_relevance(self, state: State) -> dict:
 
         # Check relevance of retrieved data
-        print("\nChecking relevance")
+        logging.info("\nChecking relevance")
 
         answer = state["answer"]
 
-        prompt = f"""
-            <|system|>
-            You are an expert in evaluating data relevance. You do it seriously.
-            Assess if provided answer can help address the query.
-            An answer that addresses a subquestion of the query is still relevant.
-            Return strictly "yes" or "no". Do not add anything else.
-            <|end|>
-            <|user|>
-            Answer:
-            The lodscore at Rs31201062 for traitBxd_18454 is 4.69
-            Query:
-            What is the lodscore of traitBxd_18454 at locus Rs31201062?
-            Decision:
-            <|end|>
-            <|assistant|>
-            yes
-            <|end|>
-            <|user|>
-            Answer:
-            {answer}
-            Query:
-            {state["input"]}
-            Decision:
-            <|end|>
-            <|assistant|>"""
+        prompt = check_prompt
 
         with self.summary_lock:
             assessment = SUMMARY_MODEL.invoke(prompt)
-        print(f"\nAssessment in checking relevance: {assessment}")
+        logging.info(f"\nAssessment in checking relevance: {assessment}")
 
         if "yes" in assessment.lower():
             should_continue = "summarize"
@@ -368,7 +239,7 @@ class GNQNA:
     def summarize(self, state: State) -> dict:
 
         # Summarize
-        print("\nSummarizing")
+        logging.info("\nSummarizing")
 
         existing_history = state.get("chat_history", [])
 
@@ -381,29 +252,7 @@ class GNQNA:
             else current_interaction
         )
 
-        prompt = f"""
-            <|system|>
-            You are an excellent and concise summary maker.
-            Summarize in bullet points the conversation below.
-            Do not modify entities names such as trait and marker.
-            Give your response in 100 words max. Do not repeat answers.
-            <|end|>
-            <|user|>
-            Conversation:
-            Trait A has a lod score of 4.7 at marker Rs71192.
-            Trait B has a lod score of 1.9 at marker Rs71192.
-            Those 2 traits are related to an immune disease.
-            Summary:
-            <|end|>
-            <|assistant|>
-            Two traits involved in diabetes have a lod score of 1.9 and 4.7 at Rs71192.
-            <|end|>
-            <|user|>
-            Conversation:
-            {full_context}:
-            Summary:
-            <|end|>
-            <|assistant|>"""
+        prompt = summarize_prompt
 
         with self.summary_lock:
             summary = SUMMARY_MODEL.invoke(prompt)
@@ -412,41 +261,17 @@ class GNQNA:
             summary = f"- {state['input']} - No valid answer generated"
 
         updated_history = existing_history + [summary]  # update chat_history
-        print(f"\nChat history in summarize: {updated_history}")
+        logging.info(f"\nChat history in summarize: {updated_history}")
 
         # Generate final answer
         if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
-            prompt = f"""
-            <|im_start|>system
-            You are an expert synthesizer. Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
-            Ensure the response is insightful, concise, and draws logical inferences where possible.
-            Provide only the final paragraph, nothing else.
-            Give your response in 100 words max. Do not repeat answers.
-            <|im_end|>
-            <|im_start|>user
-            Original question:
-            Take traits and B and compare their lod scores at Rs71192
-            Summarized history:
-            ["Traits A and B involved in diabetes have a lod score of 1.9 and 4.7 at Rs71192"]
-            Conclusion:
-            <|im_end|>
-            <|im_start|>assistant
-            The lod score at Rs71192 for trait A (1.9) is less than for trait B (4.7).
-            <|im_end|>
-            <|im_start|>user
-            Original question:
-            {state["input"]}
-            Summarized history:
-            {updated_history}
-            Conclusion:
-            <|im_end|>
-            <|im_start|>assistant"""
+            prompt = synthesize_prompt
 
             with self.generative_lock:
                 response = GENERATIVE_MODEL.invoke(prompt)
-            print(f"Answer in summarize: {response}")
+            logging.info(f"Answer in summarize: {response}")
 
             proc_answer = (
                 response
@@ -497,37 +322,13 @@ class GNQNA:
 
     def split_query(self, query: str) -> list[str]:
 
-        print("\nSplitting query")
+        logging.info("\nSplitting query")
 
-        prompt = f"""
-            <|im_start|>system
-            You are a very powerful task generator.
-        
-            Split the query into task and context based on tags.
-            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make full sense alone. If an entity is semantically shared between them, make sure to duplicate it so that each sentence has it. The goal is to have very independent subquestions for parallel processing.
-            Return only the subquestions.
-            Return strictly a JSON list of strings, nothing else.
-            <|im_end|>
-            <|im_start|>user
-            Query:
-            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what this marker is involved in biology.
-            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to extract what we know in biology on the marker previously mentioned and link it to the traits identified.
-        
-            Result:
-            <|im_end|>
-            <|im_start|>assistant
-            ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What is Rsm10000011643 involved in biology?"]
-            <|im_end|>
-            <|im_start|>user
-            Query:
-            {query}
-            Result:
-            <|im_end|>
-            <|im_start|>assistant"""
+        prompt = split_prompt
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Subqueries in split_query: {response}")
+        logging.info(f"Subqueries in split_query: {response}")
 
         if isinstance(response, str):
             start = response.find("[")
@@ -540,48 +341,13 @@ class GNQNA:
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
 
-        print("\nFinalizing")
+        logging.info("\nFinalizing")
 
-        prompt = f"""
-            <|im_start|>system
-            You are an experienced biology scientist. Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query using all information provided.
-            Ensure the response is insightful, concise, and draws logical inferences where possible.
-            Do not modify entities names such as trait and marker.            
-            Make sure to link based on what is common in the answers.
-            Provide only the story, nothing else.
-            Do not repeat answers. Use only 200 words max.
-            <|im_end|>
-            <|im_start|>user
-            Query:
-            Identify two traits related to diabetes.
-            Compare their lod scores at Rsm149505.
-            Subqueries:
-            ["Identify two traits related to diabetes",
-            "Compare lod scores of same traits at Rsm149505"]
-            Answers:
-            ["Traits A and B are related to diabetes", \
-            "The lod score at Rsm149505 is 2.3 and 3.4 for trait A and B"]
-            Conclusion:
-            <|im_end|>
-            <|im_start|>assistant
-            Traits A and B are related to diabetes and have a lod score of\
-            2.3 and 3.4 at Rsm149505. The two traits could interact via a\
-            gene close to the marker Rsm149505.
-            <|im_end|>
-            <|im_start|>user
-            Query:
-            {query}
-            Subqueries:
-            {subqueries}
-            Answers:
-            {answers}
-            Conclusion:
-            <|im_end|>
-            <|im_start|>assistant"""
+        prompt = finalize_prompt
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Response in finalize: {response}")
+        logging.info(f"Response in finalize: {response}")
 
         final_answer = (
             response
@@ -626,7 +392,7 @@ class GNQNA:
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
-        print(f"answer_question: {end-start}")
+        logging.info(f"answer_question: {end-start}")
 
         return result
 
@@ -634,15 +400,8 @@ class GNQNA:
 async def main():
     agent = GNQNA(corpus_path=CORPUS_PATH, pcorpus_path=PCORPUS_PATH, db_path=DB_PATH)
 
-    # query = input('Please enter your query:')
-
-    output = await agent.answer_question(
-    """
-    Task: Identify traits with high lod scores at similar markers. Tell me what those traits are involved in biology.
-    Context: Traits and markers are different. A trait should be related to the BXDPublish dataset while a marker is not. The goal is to extract what we know in biology about the traits previously mentioned and link them based on the markers.
-    """
-    )
-    print("\nFinal answer:", output["result"])
+    output = await agent.answer_question(question)
+    logging.info("\nSystem feedback:", output["result"])
 
     GENERATIVE_MODEL.client.close()
     SUMMARY_MODEL.client.close()
