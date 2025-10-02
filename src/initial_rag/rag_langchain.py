@@ -29,6 +29,8 @@ from langchain_core.prompts import PromptTemplate
 from rdflib import Graph
 from tqdm import tqdm
 
+from templates import *
+
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 # XXX: Remove hard-coded path.
@@ -63,19 +65,11 @@ SUMMARY_MODEL = LlamaCpp(
 )
 
 
-# Our templates for our simple RAG system
+# Templates for simple RAG system
 
-# XX: Remove hard-coded paths.
-RAG_TEMPLATE_PATH = "rag_template.txt"
-RETRIEVER_TEMPLATE_PATH = "retriever_template.txt"
-SUMMARY_TEMPLATE_PATH = "summary_template.txt"
-
-with open(RAG_TEMPLATE_PATH) as rag_stream:
-    RAG_TEMPLATE += rag_stream.read()
-with open(RETRIEVER_TEMPLATE_PATH) as retriever_stream:
-    RETRIEVER_TEMPLATE += retriever_stream.read()
-with open(SUMMARY_TEMPLATE_PATH) as summary_stream:
-    SUMMARY_TEMPLATE += summary_stream.read()
+RAG_TEMPLATE = rag_template
+RETRIEVER_TEMPLATE = retriever_template
+SUMMARY_TEMPLATE = summary_template
 
 
 @dataclass
