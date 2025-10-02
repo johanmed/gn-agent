@@ -16,4 +16,5 @@ You will need a Python environment with a number of dependencies to run this pro
 - llama-cpp-python
 - chroma-db
 - sparqlwrapper
+
 You dont need to install them one by one. Create your own Python environment and do `pip install -r requirements.txt`
