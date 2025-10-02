@@ -101,10 +101,8 @@ class GNQNA:
             for predicate, obj in g.predicate_objects(subject):
                 text += f"{predicate}:{obj}\n"
 
-            prompt = naturalize_prompt
-
             with self.generative_lock:
-                response = GENERATIVE_MODEL.invoke(prompt)
+                response = GENERATIVE_MODEL.invoke(naturalize_prompt)
             # print(f"Documents: {response}")
 
             docs.append(response)
@@ -138,10 +136,8 @@ class GNQNA:
         # Retrieve documents
         logging.info("\nRetrieving")
 
-        prompt = retriever_prompt
-
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(prompt)
+            response = GENERATIVE_MODEL.invoke(retriever_prompt)
         logging.info(f"\nResponse in retrieve: {response}")
 
         if isinstance(response, str):
@@ -191,10 +187,8 @@ class GNQNA:
             else ""
         )
 
-        prompt = analyze_prompt
-
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(prompt)
+            response = GENERATIVE_MODEL.invoke(analyze_prompt)
             response = " ".join(response.split(" ")[:200])  # constraint
         logging.info(f"\nResponse in analyze: {response}")
 
@@ -215,10 +209,8 @@ class GNQNA:
 
         answer = state["answer"]
 
-        prompt = check_prompt
-
         with self.summary_lock:
-            assessment = SUMMARY_MODEL.invoke(prompt)
+            assessment = SUMMARY_MODEL.invoke(check_prompt)
         logging.info(f"\nAssessment in checking relevance: {assessment}")
 
         if "yes" in assessment.lower():
@@ -252,10 +244,8 @@ class GNQNA:
             else current_interaction
         )
 
-        prompt = summarize_prompt
-
         with self.summary_lock:
-            summary = SUMMARY_MODEL.invoke(prompt)
+            summary = SUMMARY_MODEL.invoke(summarize_prompt)
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
@@ -267,10 +257,8 @@ class GNQNA:
         if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
-            prompt = synthesize_prompt
-
             with self.generative_lock:
-                response = GENERATIVE_MODEL.invoke(prompt)
+                response = GENERATIVE_MODEL.invoke(synthesize_prompt)
             logging.info(f"Answer in summarize: {response}")
 
             proc_answer = (
@@ -324,10 +312,8 @@ class GNQNA:
 
         logging.info("\nSplitting query")
 
-        prompt = split_prompt
-
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(prompt)
+            response = GENERATIVE_MODEL.invoke(split_prompt)
         logging.info(f"Subqueries in split_query: {response}")
 
         if isinstance(response, str):
@@ -343,10 +329,8 @@ class GNQNA:
 
         logging.info("\nFinalizing")
 
-        prompt = finalize_prompt
-
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(prompt)
+            response = GENERATIVE_MODEL.invoke(finalize_prompt)
         logging.info(f"Response in finalize: {response}")
 
         final_answer = (
