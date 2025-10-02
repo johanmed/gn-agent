@@ -10,6 +10,7 @@ Author: Johannes Medagbe (c) 2025
 
 import asyncio
 import json
+import logging
 import os
 import sys
 import time
@@ -32,6 +33,13 @@ from tqdm import tqdm
 from typing_extensions import TypedDict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
+logging.basicConfig(
+    filename="log_langgraph.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+)
+
 
 # XXX: Remove hard-coded path.
 CORPUS_PATH = "/home/johannesm/rdf_corpus/"
@@ -114,8 +122,7 @@ class GNQNA:
         )
 
     def corpus_to_docs(self, corpus_path: str) -> list:
-        print("In corpus_to_docs")
-        start = time.time()
+        logging.info("In corpus_to_docs")
 
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
@@ -163,35 +170,31 @@ class GNQNA:
 
             docs.append(response)
 
-            if len(docs) > total/10:
+            if len(docs) > total / 10:
                 break
-
-        end = time.time()
-        print(f"corpus_to_docs: {end-start}")
 
         return docs
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 500
     ) -> Any:
-        print("In set_chroma_db")
-        match Path(db_path).exists():
-            case True:
-                db = Chroma(persist_directory=db_path, embedding_function=embed_model)
-                return db
-            case _:
-                for i in tqdm(range(0, len(docs), chunk_size)):
-                    chunk = docs[i : i + chunk_size]
-                    db = Chroma.from_texts(
-                        texts=chunk, embedding=embed_model, persist_directory=db_path
-                    )
-                    db.persist()
-                return db
+        logging.info("In set_chroma_db")
+        if Path(db_path).exists():
+            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            return db
+        else:
+            for i in tqdm(range(0, len(docs), chunk_size)):
+                chunk = docs[i : i + chunk_size]
+                db = Chroma.from_texts(
+                    texts=chunk, embedding=embed_model, persist_directory=db_path
+                )
+                db.persist()
+            return db
 
     def retrieve(self, state: State) -> dict:
 
         # Retrieve documents
-        print("\nRetrieving")
+        logging.info("\nRetrieving")
 
         prompt = f"""
         <|im_start|>system
@@ -217,7 +220,7 @@ class GNQNA:
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"\nResponse in retrieve: {response}")
+        logging.info(f"\nResponse in retrieve: {response}")
 
         if isinstance(response, str):
             start = response.find("[")
@@ -239,7 +242,7 @@ class GNQNA:
             if hasattr(doc, "page_content")
         ]
 
-        print(f"Retrieved docs in retrieve: {new_docs}")
+        logging.info(f"Retrieved docs in retrieve: {new_docs}")
 
         should_continue = "analyze"
 
@@ -254,7 +257,7 @@ class GNQNA:
     def analyze(self, state: State) -> dict:
 
         # Analyze documents
-        print("\nAnalysing")
+        logging.info("\nAnalysing")
 
         context = (
             "\n".join(state.get("context", [])) if state.get("context", []) else ""
@@ -301,7 +304,7 @@ class GNQNA:
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
             response = " ".join(response.split(" ")[:200])  # constraint
-        print(f"\nResponse in analyze: {response}")
+        logging.info(f"\nResponse in analyze: {response}")
 
         should_continue = "check_relevance"
 
@@ -316,7 +319,7 @@ class GNQNA:
     def check_relevance(self, state: State) -> dict:
 
         # Check relevance of retrieved data
-        print("\nChecking relevance")
+        logging.info("\nChecking relevance")
 
         answer = state["answer"]
 
@@ -348,7 +351,7 @@ class GNQNA:
 
         with self.summary_lock:
             assessment = SUMMARY_MODEL.invoke(prompt)
-        print(f"\nAssessment in checking relevance: {assessment}")
+        logging.info(f"\nAssessment in checking relevance: {assessment}")
 
         if "yes" in assessment.lower():
             should_continue = "summarize"
@@ -368,7 +371,7 @@ class GNQNA:
     def summarize(self, state: State) -> dict:
 
         # Summarize
-        print("\nSummarizing")
+        logging.info("\nSummarizing")
 
         existing_history = state.get("chat_history", [])
 
@@ -412,7 +415,7 @@ class GNQNA:
             summary = f"- {state['input']} - No valid answer generated"
 
         updated_history = existing_history + [summary]  # update chat_history
-        print(f"\nChat history in summarize: {updated_history}")
+        logging.info(f"\nChat history in summarize: {updated_history}")
 
         # Generate final answer
         if not updated_history:
@@ -446,7 +449,7 @@ class GNQNA:
 
             with self.generative_lock:
                 response = GENERATIVE_MODEL.invoke(prompt)
-            print(f"Answer in summarize: {response}")
+            logging.info(f"Answer in summarize: {response}")
 
             proc_answer = (
                 response
@@ -497,7 +500,7 @@ class GNQNA:
 
     def split_query(self, query: str) -> list[str]:
 
-        print("\nSplitting query")
+        logging.info("\nSplitting query")
 
         prompt = f"""
             <|im_start|>system
@@ -527,7 +530,7 @@ class GNQNA:
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Subqueries in split_query: {response}")
+        logging.info(f"Subqueries in split_query: {response}")
 
         if isinstance(response, str):
             start = response.find("[")
@@ -540,7 +543,7 @@ class GNQNA:
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
 
-        print("\nFinalizing")
+        logging.info("\nFinalizing")
 
         prompt = f"""
             <|im_start|>system
@@ -581,7 +584,7 @@ class GNQNA:
 
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
-        print(f"Response in finalize: {response}")
+        logging.info(f"Response in finalize: {response}")
 
         final_answer = (
             response
@@ -626,7 +629,7 @@ class GNQNA:
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
-        print(f"answer_question: {end-start}")
+        logging.info(f"answer_question: {end-start}")
 
         return result
 
@@ -637,12 +640,12 @@ async def main():
     # query = input('Please enter your query:')
 
     output = await agent.answer_question(
-    """
+        """
     Task: Identify traits with high lod scores at similar markers. Tell me what those traits are involved in biology.
     Context: Traits and markers are different. A trait should be related to the BXDPublish dataset while a marker is not. The goal is to extract what we know in biology about the traits previously mentioned and link them based on the markers.
     """
     )
-    print("\nFinal answer:", output["result"])
+    logging.info("\nFinal answer:", output["result"])
 
     GENERATIVE_MODEL.client.close()
     SUMMARY_MODEL.client.close()
