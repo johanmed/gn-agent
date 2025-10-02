@@ -5,7 +5,8 @@ This a multi-agent system for genomic analysis
 2. Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
 3. Summary model = Phi-3-mini-4k-instruct (small model)
 
-Author: Johannes Medagbe (c) 2025
+Author: Johannes Medagbe
+Copyright 2025
 """
 
 import asyncio
@@ -27,6 +28,7 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.llms import LlamaCpp
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
+from langchain_core.documents import Document
 from langgraph.graph import END, START, StateGraph
 from rdflib import Graph
 from tqdm import tqdm
@@ -185,8 +187,11 @@ class GNQNA:
         else:
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
+                document = Document(
+                    page_content=chunk, metadata={"source": f"Document {i}"}
+                )
                 db = Chroma.from_texts(
-                    texts=chunk, embedding=embed_model, persist_directory=db_path
+                    texts=document, embedding=embed_model, persist_directory=db_path
                 )
                 db.persist()
             return db
