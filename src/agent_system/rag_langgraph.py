@@ -17,16 +17,19 @@ from glob import glob
 from pathlib import Path
 from threading import Lock
 from typing import Any
+from pydantic import BaseModel
 
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from rdflib import Graph
 from tqdm import tqdm
-from typing_extensions import TypedDict
+from typing_extensions import TypedDict, Annotated
 
 from config import *
 from prompts import *
@@ -40,12 +43,17 @@ class State(TypedDict):
     answer: str
     should_continue: str
 
+class AgentState(BaseModel):
+    messages: Annotated[list[BaseMessage], add_messages]
+    next: Literal["researcher", "planner", "reflector", "end"]
+
 
 @dataclass
-class GNQNA:
+class GNAgent:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    max_global_visits: int = 15 # max visits allowed in the global graph
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
@@ -137,7 +145,8 @@ class GNQNA:
         # Retrieve documents
         logging.info("\nRetrieving")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
+        with self.retriever_lock:
+            retrieved_docs = self.ensemble_retriever.invoke(state["input"])
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -259,7 +268,7 @@ class GNQNA:
             "chat_history": updated_history,
         }
 
-    def initialize_langgraph_chain(self) -> Any:
+    def initialize_subgraph(self, state: State) -> Any:
         graph_builder = StateGraph(State)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
@@ -274,12 +283,12 @@ class GNQNA:
             lambda state: state.get("should_continue", "summarize"),
             {"summarize": "summarize", "end": END},
         )
-        graph = graph_builder.compile()
+        subgraph = graph_builder.compile()
 
-        return graph
+        return subgraph
 
-    async def invoke_langgraph(self, question: str) -> Any:
-        graph = self.initialize_langgraph_chain()
+    async def invoke_subgraph(self, question: str) -> Any:
+        subgraph = self.initialize_subgraph()
         initial_state = {
             "input": question,
             "chat_history": [],
@@ -288,7 +297,7 @@ class GNQNA:
             "should_continue": "retrieve",
         }
 
-        result = await graph.ainvoke(initial_state)
+        result = await subgraph.ainvoke(initial_state)
 
         return result
 
@@ -331,7 +340,7 @@ class GNQNA:
 
     def run_subtask(self, subquery: str) -> dict:
         # Run specific task
-        result = asyncio.run(self.invoke_langgraph(subquery))
+        result = asyncio.run(self.invoke_subgraph(subquery))
         return result
 
     def manage_subtasks(self, query: str) -> dict:
@@ -359,20 +368,73 @@ class GNQNA:
 
         return {"result": concatenated_answer, "states": results}
 
-    async def answer_question(self, query: str) -> Any:
+    async def researcher(self, query: str) -> Any:
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
         logging.info(f"answer_question: {end-start}")
 
+        return result["result"]
+
+    def planner(self, state: AgentState) -> Any:
+        response = process(background=[planner_prompt] + state["messages"])
+        logging.info(f"Response in planner: {response}")
+        answer = response.get("answer")
+        return {"messages": [answer]}
+
+    def reflector(self, state: AgentState) -> Any:
+        trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
+        translated_messages = [reflector_prompt, state["messages"][0]] + [trans_map[msg.__class__](content=msg) for msg in state["messages"][1:]]
+        response = process(background=translated_messages)
+        logging.info(f"Response in reflector: {response}")
+        answer = response.get("answer")
+        return {"messages": [HumanMessage(content=answer)]}
+
+    def supervisor(self, state: AgentState) -> Any:
+        messages = [
+            ("system", supervisor_system1),
+            *state["messages"]],
+            ("system", supervisor_system2)
+            ]
+        if len(messages) > self.max_global_visits: 
+            return END
+        return supervise(background=messages)
+
+    def initialize_globgraph(self, state: AgentState) -> Any:
+        graph_builder = StateGraph(AgentState)
+        graph_builder.add_node("researcher", self.researcher)
+        graph_builder.add_node("planner", self.planner)
+        graph_builder.add_node("reflector", self.reflector)
+        graph_builder.add_node("supervisor", self.supervisor)
+        graph_builder.add_edge(START, "supervisor")
+        graph_builder.add_edge("researcher", "supervisor")
+        graph_builder.add_edge("planner", "supervisor")
+        graph_builder.add_edge("reflector", "supervisor")
+        graph_builder.add_edge("end", END)
+        graph_builder.add_conditional_edges("supervisor", lambda state: state["next"])
+        graph = graph_builder.compile()
+
+        return graph
+
+    def invoke_globgraph(self, query: str):
+        graph = initialize_globgraph()
+        initial_state = {
+            messages=[("human", query)],
+            next=Literal["researcher"],
+            }
+        result = graph.ainvoke(initial_state)
+
         return result
 
-
+    def handler(self, query: str):
+        global_result = asyncio.run(self.invoke_globgraph(query))
+        return global_result
+        
 async def main():
-    agent = GNQNA(corpus_path=CORPUS_PATH, pcorpus_path=PCORPUS_PATH, db_path=DB_PATH)
+    agent = GNAgent(corpus_path=CORPUS_PATH, pcorpus_path=PCORPUS_PATH, db_path=DB_PATH)
 
-    output = await agent.answer_question(question)
-    logging.info("\nSystem feedback:", output["result"])
+    output = await agent.handler(question)
+    logging.info("\nSystem feedback:", output)
 
 
 if __name__ == "__main__":

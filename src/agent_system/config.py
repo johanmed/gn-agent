@@ -8,8 +8,10 @@ Setup and LLMs
 
 import logging
 import warnings
+from typing import Literal, Annotated
 
 import dspy
+from langchain_core.messages import BaseMessage
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(
@@ -59,3 +61,19 @@ SUMMARY_MODEL = dspy.LM(
 deep_generate = dspy.ChainOfThought("question -> answer: str", lm=GENERATIVE_MODEL)
 
 shallow_generate = dspy.ChainOfThought("question -> answer: str", lm=SUMMARY_MODEL)
+
+
+class SupervisorDecision(dspy.Signature):
+    background: Annotated[list[BaseMessage]] = dspy.InputField(()
+    next: Literal["researcher", "planner", "reflector", "end"] = dspy.OutputField()
+    reasoning: str = dspy.OutputField()
+    
+supervise = dspy.Predict(SupervisorDecision)
+
+
+class Process(dspy.Signature):
+    background: Annotated[list[BaseMessage]] = dspy.InputField(()
+    answer: str = dspy.OutputField()
+    reasoning: str = dspy.OutputField()
+
+process = dspy.Predict(Process)

@@ -1,3 +1,5 @@
+from langchain_core.messages import SystemMessage
+
 naturalize_prompt = f"""
             <|im_start|>system
             You are extremely good at naturalizing RDF and inferring meaning.
@@ -132,15 +134,13 @@ synthesize_prompt = f"""
 split_prompt = f"""
             <|im_start|>system
             You are an expert in genetics. You generate independent subqueries in genetics for parallel processing.
-            Split the query into task and context based on tags.
             Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make fully sense alone. If a marker or trait is shared between the subqueries, make sure to mention it explicitly in each subquery. There should be no words such as "this", "that" or "those" in the subqueries. The goal is to have subquestions that do not have any implicit relationships so that they can be processed separately.
             Return only the subquestions.
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
             <|im_start|>user
             Query:
-            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what this marker is involved in biology.
-            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to extract what we know in biology on the marker previously mentioned and link it to the traits identified. 
+            Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what this marker is involved in biology.
             Result:
             <|im_end|>
             <|im_start|>assistant
@@ -148,8 +148,7 @@ split_prompt = f"""
             <|im_end|>
             <|im_start|>user
             Query:
-            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Find what those traits are.
-            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to explain the association to the marker given the trait biology.
+            Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Find what those traits are.
             Result:
             <|im_end|>
             <|im_start|>assistant
@@ -198,3 +197,19 @@ finalize_prompt = f"""
             Conclusion:
             <|im_end|>
             <|im_start|>assistant"""
+
+supervisor_system1 = f"""
+
+"""
+
+supervisor_system2 = f"""
+
+"""
+
+planner_prompt = f"""
+
+"""
+
+reflector_prompt = f"""
+
+"""
