@@ -102,7 +102,8 @@ class GNQNA:
                 text += f"{predicate}:{obj}\n"
 
             with self.generative_lock:
-                response = GENERATIVE_MODEL.invoke(naturalize_prompt)
+                response = deep_generate(question=naturalize_prompt)
+                response = response.get("answer")
             # print(f"Documents: {response}")
 
             docs.append(response)
@@ -168,10 +169,11 @@ class GNQNA:
         )
 
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(analyze_prompt)
-            response = " ".join(response.split(" ")[:200])  # constraint
+            response = deep_generate(question=analyze_prompt)
+
         logging.info(f"\nResponse in analyze: {response}")
 
+        response = " ".join(response.get("answer").split(" ")[:200])  # constraint
         should_continue = "check_relevance"
 
         return {
@@ -190,10 +192,10 @@ class GNQNA:
         answer = state["answer"]
 
         with self.summary_lock:
-            assessment = SUMMARY_MODEL.invoke(check_prompt)
+            assessment = shallow_generate(question=check_prompt)
         logging.info(f"\nAssessment in checking relevance: {assessment}")
 
-        if "yes" in assessment.lower():
+        if "yes" in assessment.get("answer").lower():
             should_continue = "summarize"
         else:
             should_continue = "end"
@@ -225,7 +227,8 @@ class GNQNA:
         )
 
         with self.summary_lock:
-            summary = SUMMARY_MODEL.invoke(summarize_prompt)
+            summary = shallow_generate(question=summarize_prompt)
+            summary = summary.get("answer")
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
@@ -238,10 +241,11 @@ class GNQNA:
             final_answer = "Insufficient data for analysis."
         else:
             with self.generative_lock:
-                response = GENERATIVE_MODEL.invoke(synthesize_prompt)
+                response = deep_generate(question=synthesize_prompt)
             logging.info(f"Answer in summarize: {response}")
 
-            proc_answer = (
+            response = response.get("answer")
+            final_answer = (
                 response
                 if response
                 else "Sorry, we are unable to \
@@ -250,7 +254,7 @@ class GNQNA:
 
         return {
             "input": state["input"],
-            "answer": proc_answer,
+            "answer": final_answer,
             "context": state.get("context", []),
             "chat_history": updated_history,
         }
@@ -293,8 +297,10 @@ class GNQNA:
         logging.info("\nSplitting query")
 
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(split_prompt)
+            response = deep_generate(question=split_prompt)
+
         logging.info(f"Subqueries in split_query: {response}")
+        response = response.get("answer")
 
         if isinstance(response, str):
             start = response.find("[")
@@ -310,9 +316,10 @@ class GNQNA:
         logging.info("\nFinalizing")
 
         with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(finalize_prompt)
-        logging.info(f"Response in finalize: {response}")
+            response = deep_generate(question=finalize_prompt)
 
+        logging.info(f"Response in finalize: {response}")
+        response = response.get("answer")
         final_answer = (
             response
             if response
@@ -366,9 +373,6 @@ async def main():
 
     output = await agent.answer_question(question)
     logging.info("\nSystem feedback:", output["result"])
-
-    GENERATIVE_MODEL.client.close()
-    SUMMARY_MODEL.client.close()
 
 
 if __name__ == "__main__":
