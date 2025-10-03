@@ -251,13 +251,13 @@ class GNAgent:
             final_answer = "Insufficient data for analysis."
         else:
             with self.generative_lock:
-                response = deep_generate(question=synthesize_prompt)
-            logging.info(f"Answer in summarize: {response}")
+                result = deep_generate(question=synthesize_prompt)
+            logging.info(f"Result in summarize: {result}")
 
-            response = response.get("answer")
+            result = result.get("answer")
             final_answer = (
-                response
-                if response
+                result
+                if result
                 else "Sorry, we are unable to \
             provide a valuable feedback due to lack of relevant data."
             )
@@ -307,15 +307,15 @@ class GNAgent:
         logging.info("\nSplitting query")
 
         with self.generative_lock:
-            response = deep_generate(question=split_prompt)
+            result = deep_generate(question=split_prompt)
 
-        logging.info(f"Subqueries in split_query: {response}")
-        response = response.get("answer")
+        logging.info(f"Subqueries in split_query: {result}")
+        result = result.get("answer")
 
-        if isinstance(response, str):
-            start = response.find("[")
-            end = response.rfind("]") + 1
-            subqueries = json.loads(response[start:end])
+        if isinstance(result, str):
+            start = result.find("[")
+            end = result.rfind("]") + 1
+            subqueries = json.loads(result[start:end])
         else:
             subqueries = [query]
 
@@ -326,13 +326,13 @@ class GNAgent:
         logging.info("\nFinalizing")
 
         with self.generative_lock:
-            response = deep_generate(question=finalize_prompt)
+            result = deep_generate(question=finalize_prompt)
 
-        logging.info(f"Response in finalize: {response}")
-        response = response.get("answer")
+        logging.info(f"Result in finalize: {result}")
+        result = result.get("answer")
         final_answer = (
-            response
-            if response
+            result
+            if result
             else "Sorry, we are unable to \
             provide an overall feedback due to lack of relevant data."
         )
@@ -373,36 +373,36 @@ class GNAgent:
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
-        logging.info(f"Response in researcher: {result}")
+        logging.info(f"Result in researcher: {result}")
 
         return result["result"]
 
     def planner(self, state: AgentState) -> Any:
-        response = process(background=[planner_prompt] + state["messages"])
-        logging.info(f"Response in planner: {response}")
-        answer = response.get("answer")
+        result = process(background=[plan_system_prompt] + state["messages"])
+        logging.info(f"Result in planner: {result}")
+        answer = result.get("answer")
         return {"messages": [answer]}
 
     def reflector(self, state: AgentState) -> Any:
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
-        translated_messages = [reflector_prompt, state["messages"][0]] + [
-            trans_map[msg.__class__](content=msg) for msg in state["messages"][1:]
+        translated_messages = [refl_system_prompt, state["messages"][0]] + [
+            trans_map[msg.__class__](msg) for msg in state["messages"][1:]
         ]
-        response = process(background=translated_messages)
-        logging.info(f"Response in reflector: {response}")
-        answer = response.get("answer")
-        return {"messages": [HumanMessage(content=answer)]}
+        result = process(background=translated_messages)
+        logging.info(f"Result in reflector: {result}")
+        answer = result.get("answer")
+        return {"messages": [HumanMessage(answer)]}
 
     def supervisor(self, state: AgentState) -> Any:
         messages = [
-            ("system", supervisor_system1),
+            ("system", sup_system_prompt1),
             *state["messages"],
-            ("system", supervisor_system2),
+            ("system", sup_system_prompt2),
         ]
-        if len(messages) > self.max_global_visits:
+        if len(messages) >= self.max_global_visits:
             return END
         result = supervise(background=messages)
-        logging.info(f"Answer in supervisor: {result}")
+        logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
         return result
 
@@ -422,7 +422,7 @@ class GNAgent:
 
         return graph
 
-    def invoke_globgraph(self, query: str):
+    def invoke_globgraph(self, query: str) -> Any:
         graph = initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
@@ -432,7 +432,7 @@ class GNAgent:
 
         return result
 
-    def handler(self, query: str):
+    def handler(self, query: str) -> Any:
         global_result = asyncio.run(self.invoke_globgraph(query))
         return global_result
 
