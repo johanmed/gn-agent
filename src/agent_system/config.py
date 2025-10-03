@@ -8,7 +8,7 @@ Setup and LLMs
 
 import logging
 import warnings
-from typing import Literal, Annotated
+from typing import Annotated, Literal
 
 import dspy
 from langchain_core.messages import BaseMessage
@@ -64,16 +64,18 @@ shallow_generate = dspy.ChainOfThought("question -> answer: str", lm=SUMMARY_MOD
 
 
 class SupervisorDecision(dspy.Signature):
-    background: Annotated[list[BaseMessage]] = dspy.InputField(()
+    background: Annotated[list[BaseMessage]] = dspy.InputField()
     next: Literal["researcher", "planner", "reflector", "end"] = dspy.OutputField()
     reasoning: str = dspy.OutputField()
-    
+
+
 supervise = dspy.Predict(SupervisorDecision)
 
 
 class Process(dspy.Signature):
-    background: Annotated[list[BaseMessage]] = dspy.InputField(()
+    background: Annotated[list[BaseMessage]] = dspy.InputField()
     answer: str = dspy.OutputField()
     reasoning: str = dspy.OutputField()
+
 
 process = dspy.Predict(Process)

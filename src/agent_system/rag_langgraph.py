@@ -17,19 +17,19 @@ from glob import glob
 from pathlib import Path
 from threading import Lock
 from typing import Any
-from pydantic import BaseModel
 
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
+from pydantic import BaseModel
 from rdflib import Graph
 from tqdm import tqdm
-from typing_extensions import TypedDict, Annotated
+from typing_extensions import Annotated, TypedDict
 
 from config import *
 from prompts import *
@@ -43,6 +43,7 @@ class State(TypedDict):
     answer: str
     should_continue: str
 
+
 class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages]
     next: Literal["researcher", "planner", "reflector", "end"]
@@ -53,7 +54,7 @@ class GNAgent:
     corpus_path: str
     pcorpus_path: str
     db_path: str
-    max_global_visits: int = 15 # max visits allowed in the global graph
+    max_global_visits: int = 15  # max visits allowed in the global graph
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
@@ -384,7 +385,9 @@ class GNAgent:
 
     def reflector(self, state: AgentState) -> Any:
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
-        translated_messages = [reflector_prompt, state["messages"][0]] + [trans_map[msg.__class__](content=msg) for msg in state["messages"][1:]]
+        translated_messages = [reflector_prompt, state["messages"][0]] + [
+            trans_map[msg.__class__](content=msg) for msg in state["messages"][1:]
+        ]
         response = process(background=translated_messages)
         logging.info(f"Response in reflector: {response}")
         answer = response.get("answer")
@@ -393,10 +396,10 @@ class GNAgent:
     def supervisor(self, state: AgentState) -> Any:
         messages = [
             ("system", supervisor_system1),
-            *state["messages"]],
-            ("system", supervisor_system2)
-            ]
-        if len(messages) > self.max_global_visits: 
+            *state["messages"],
+            ("system", supervisor_system2),
+        ]
+        if len(messages) > self.max_global_visits:
             return END
         return supervise(background=messages)
 
@@ -419,9 +422,9 @@ class GNAgent:
     def invoke_globgraph(self, query: str):
         graph = initialize_globgraph()
         initial_state = {
-            messages=[("human", query)],
-            next=Literal["researcher"],
-            }
+            "messages": [("human", query)],
+            "next": Literal["supervisor"],
+        }
         result = graph.ainvoke(initial_state)
 
         return result
@@ -429,7 +432,8 @@ class GNAgent:
     def handler(self, query: str):
         global_result = asyncio.run(self.invoke_globgraph(query))
         return global_result
-        
+
+
 async def main():
     agent = GNAgent(corpus_path=CORPUS_PATH, pcorpus_path=PCORPUS_PATH, db_path=DB_PATH)
 

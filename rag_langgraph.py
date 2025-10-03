@@ -44,13 +44,13 @@ logging.basicConfig(
 
 
 # XXX: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/corpus/"
+CORPUS_PATH = "/home/johannesm/rdf_corpus/"
 
 # XXX: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/rdf_tmp/docs.txt"
 
 # XXX: Remove hard-coded path.
-DB_PATH = "/home/johannesm/tmp/chroma_db"
+DB_PATH = "/home/johannesm/rdf_tmp/chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
