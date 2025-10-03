@@ -373,7 +373,7 @@ class GNAgent:
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
-        logging.info(f"answer_question: {end-start}")
+        logging.info(f"Response in researcher: {result}")
 
         return result["result"]
 
@@ -401,7 +401,10 @@ class GNAgent:
         ]
         if len(messages) > self.max_global_visits:
             return END
-        return supervise(background=messages)
+        result = supervise(background=messages)
+        logging.info(f"Answer in supervisor: {result}")
+        result = result.get("next")
+        return result
 
     def initialize_globgraph(self, state: AgentState) -> Any:
         graph_builder = StateGraph(AgentState)
