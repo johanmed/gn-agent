@@ -200,8 +200,8 @@ class GNQNA:
 
         # Retrieve documents
         logging.info("\nRetrieving")
-        
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"]))
+
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -221,7 +221,9 @@ class GNQNA:
         logging.info("\nAnalysing")
 
         context = (
-            "\n".join(doc.page_content for doc in state.get("context", [])) if state.get("context", []) else ""
+            "\n".join(doc.page_content for doc in state.get("context", []))
+            if state.get("context", [])
+            else ""
         )
 
         existing_history = (
