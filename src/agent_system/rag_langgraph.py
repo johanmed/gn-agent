@@ -135,38 +135,16 @@ class GNQNA:
 
         # Retrieve documents
         logging.info("\nRetrieving")
+        
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
 
-        with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(retriever_prompt)
-        logging.info(f"\nResponse in retrieve: {response}")
-
-        if isinstance(response, str):
-            start = response.find("[")
-            end = response.rfind("]") + 1  # offset by 1 for slicing
-            response = json.loads(response[start:end])
-        else:
-            response = []
-
-        retrieved_docs = []
-        with self.retriever_lock:
-            for query in response:
-                if query:
-                    retrieved_docs.append(self.ensemble_retriever.invoke(query))
-
-        new_docs = [
-            doc.page_content
-            for doc_list in retrieved_docs
-            for doc in doc_list
-            if hasattr(doc, "page_content")
-        ]
-
-        logging.info(f"Retrieved docs in retrieve: {new_docs}")
+        logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
         should_continue = "analyze"
 
         return {
             "input": state["input"],
-            "context": new_docs,
+            "context": retrieved_docs,
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
             "answer": state.get("answer", ""),
@@ -178,7 +156,7 @@ class GNQNA:
         logging.info("\nAnalysing")
 
         context = (
-            "\n".join(state.get("context", [])) if state.get("context", []) else ""
+            "\n".join(doc.page_content for doc in state.get("context", [])) if state.get("context", []) else ""
         )
 
         existing_history = (

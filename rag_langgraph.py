@@ -44,13 +44,13 @@ logging.basicConfig(
 
 
 # XXX: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/rdf_corpus/"
+CORPUS_PATH = "/home/johannesm/corpus/"
 
 # XXX: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/rdf_tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
 
 # XXX: Remove hard-coded path.
-DB_PATH = "/home/johannesm/rdf_tmp/chroma_db"
+DB_PATH = "/home/johannesm/tmp/chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -145,7 +145,7 @@ class GNQNA:
 
             prompt = f"""
                 <|im_start|>system
-                You are extremely good at naturalizing RDF and inferring meaning
+                You are extremely good at naturalizing RDF and inferring meaning.
                 <|im_end|>
                 <|im_start|>user
                 Take following data and make it sound like Plain English.
@@ -200,60 +200,16 @@ class GNQNA:
 
         # Retrieve documents
         logging.info("\nRetrieving")
+        
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"]))
 
-        prompt = f"""
-        <|im_start|>system
-        You are powerful query generator and you strictly follow instructions.
-        Generate a list of queries to retrieve relevant documents relevant to
-        the question below. Return only a valid list, nothing else.
-        <|im_end|>
-        <|im_start|>user
-        Question:
-        Compare lodscore at Rs2120 for traitBxd_12680 and traitBxd_20496
-        Answer:
-        <|im_end|>
-        <|im_start|>assistant
-        ["lodscore at Rs2120 for traitBxd_12680",
-        "lodscore at Rs2120 for traitBxd_20496"]
-        <|im_end|>
-        <|im_start|>user
-        Question:
-        {state['input']}
-        Answer:
-        <|im_end|>
-        <|im_start|>assistant"""
-
-        with self.generative_lock:
-            response = GENERATIVE_MODEL.invoke(prompt)
-        logging.info(f"\nResponse in retrieve: {response}")
-
-        if isinstance(response, str):
-            start = response.find("[")
-            end = response.rfind("]") + 1  # offset by 1 for slicing
-            response = json.loads(response[start:end])
-        else:
-            response = []
-
-        retrieved_docs = []
-        with self.retriever_lock:
-            for query in response:
-                if query:
-                    retrieved_docs.append(self.ensemble_retriever.invoke(query))
-
-        new_docs = [
-            doc.page_content
-            for doc_list in retrieved_docs
-            for doc in doc_list
-            if hasattr(doc, "page_content")
-        ]
-
-        logging.info(f"Retrieved docs in retrieve: {new_docs}")
+        logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
         should_continue = "analyze"
 
         return {
             "input": state["input"],
-            "context": new_docs,
+            "context": retrieved_docs,
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
             "answer": state.get("answer", ""),
@@ -265,7 +221,7 @@ class GNQNA:
         logging.info("\nAnalysing")
 
         context = (
-            "\n".join(state.get("context", [])) if state.get("context", []) else ""
+            "\n".join(doc.page_content for doc in state.get("context", [])) if state.get("context", []) else ""
         )
 
         existing_history = (
@@ -276,7 +232,7 @@ class GNQNA:
 
         prompt = f"""
              <|im_start|>system
-             You are an experienced data analyst who provides accurate and concise feedback.
+             You are an experienced data analyst who provides accurate and concise feedback. You do extremely well with biological data.
              Answer the question below using provided information.
              Do not modify entities names such as trait and marker.
              Give your response in 200 words max. Do not repeat answers.
@@ -330,8 +286,8 @@ class GNQNA:
 
         prompt = f"""
             <|system|>
-            You are an expert in evaluating data relevance. You do it seriously.
-            Assess if provided answer can help address the query.
+            You are an expert in evaluating data relevance in the biological field. You do it seriously.
+            Assess if the provided answer can help address the query.
             An answer that addresses a subquestion of the query is still relevant.
             Return strictly "yes" or "no". Do not add anything else.
             <|end|>
@@ -391,7 +347,7 @@ class GNQNA:
 
         prompt = f"""
             <|system|>
-            You are an excellent and concise summary maker.
+            You are an excellent and concise summary maker for conversations.
             Summarize in bullet points the conversation below.
             Do not modify entities names such as trait and marker.
             Give your response in 100 words max. Do not repeat answers.
@@ -428,7 +384,7 @@ class GNQNA:
         else:
             prompt = f"""
             <|im_start|>system
-            You are an expert synthesizer. Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
+            You are an expert in synthesizing biological information. Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
             Ensure the response is insightful, concise, and draws logical inferences where possible.
             Provide only the final paragraph, nothing else.
             Give your response in 100 words max. Do not repeat answers.
@@ -509,10 +465,9 @@ class GNQNA:
 
         prompt = f"""
             <|im_start|>system
-            You are a very powerful task generator.
-        
+            You are an expert in genetics. You generate independent subqueries in genetics for parallel processing.
             Split the query into task and context based on tags.
-            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make full sense alone. If an entity is semantically shared between them, make sure to duplicate it so that each sentence has it. The goal is to have very independent subquestions for parallel processing.
+            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make fully sense alone. If a marker or trait is shared between the subqueries, make sure to mention it explicitly in each subquery. There should be no words such as "this", "that" or "those" in the subqueries. The goal is to have subquestions that do not have any implicit relationships so that they can be processed separately.
             Return only the subquestions.
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
@@ -520,11 +475,19 @@ class GNQNA:
             Query:
             Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what this marker is involved in biology.
             Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to extract what we know in biology on the marker previously mentioned and link it to the traits identified.
-        
             Result:
             <|im_end|>
             <|im_start|>assistant
             ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What is Rsm10000011643 involved in biology?"]
+            <|im_end|>
+            <|im_start|>user
+            Query:
+            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Find what those traits are.
+            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to explain the association to the marker given the trait biology.
+            Result:
+            <|im_end|>
+            <|im_start|>assistant
+            ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What are BXDPublish, GWA or GEMMA traits involved in biology?"]
             <|im_end|>
             <|im_start|>user
             Query:
@@ -552,7 +515,7 @@ class GNQNA:
 
         prompt = f"""
             <|im_start|>system
-            You are an experienced biology scientist. Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query using all information provided.
+            You are an experienced geneticist. Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query using all information provided.
             Ensure the response is insightful, concise, and draws logical inferences where possible.
             Do not modify entities names such as trait and marker.            
             Make sure to link based on what is common in the answers.
@@ -646,8 +609,8 @@ async def main():
 
     output = await agent.answer_question(
         """
-    Task: Identify traits with high lod scores at similar markers. Tell me what those traits are involved in biology.
-    Context: Traits and markers are different. A trait should be related to the BXDPublish dataset while a marker is not. The goal is to extract what we know in biology about the traits previously mentioned and link them based on the markers.
+    Task: Identify traits with lod scores > 3.0 at markers starting with Rsm100000. Tell me what those traits are involved in biology.
+    Context: Traits and markers are different. A trait is related to the BXDPublish dataset while a marker is not. The goal is to extract what we know in biology about the traits previously mentioned and link them based on the markers.
     """
     )
     logging.info("\nFinal answer:", output["result"])

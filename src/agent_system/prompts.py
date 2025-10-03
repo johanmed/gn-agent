@@ -1,6 +1,6 @@
 naturalize_prompt = f"""
             <|im_start|>system
-            You are extremely good at naturalizing RDF and inferring meaning
+            You are extremely good at naturalizing RDF and inferring meaning.
             <|im_end|>
             <|im_start|>user
             Take following data and make it sound like Plain English.
@@ -21,31 +21,9 @@ naturalize_prompt = f"""
             <|im_start|>end
             <|im_start|>assistant"""
 
-retriever_prompt = f"""
-            <|im_start|>system
-            You are powerful query generator and you strictly follow instructions.
-            Generate a list of queries to retrieve relevant documents relevant to
-            the question below. Return only a valid list, nothing else.
-            <|im_end|>
-            <|im_start|>user
-            Question:
-            Compare lodscore at Rs2120 for traitBxd_12680 and traitBxd_20496
-            Answer:
-            <|im_end|>
-            <|im_start|>assistant
-            ["lodscore at Rs2120 for traitBxd_12680",
-            "lodscore at Rs2120 for traitBxd_20496"]
-            <|im_end|>
-            <|im_start|>user
-            Question:
-            {state['input']}
-            Answer:
-            <|im_end|>
-            <|im_start|>assistant"""
-
 analyze_prompt = f"""
              <|im_start|>system
-             You are an experienced data analyst who provides accurate and concise feedback.
+             You are an experienced data analyst who provides accurate and concise feedback. You do extremely well with biological data.
              Answer the question below using provided information.
              Do not modify entities names such as trait and marker.
              Give your response in 200 words max. Do not repeat answers.
@@ -77,8 +55,8 @@ analyze_prompt = f"""
 
 check_prompt = f"""
             <|system|>
-            You are an expert in evaluating data relevance. You do it seriously.
-            Assess if provided answer can help address the query.
+            You are an expert in evaluating data relevance in the biological field. You do it seriously.
+            Assess if the provided answer can help address the query.
             An answer that addresses a subquestion of the query is still relevant.
             Return strictly "yes" or "no". Do not add anything else.
             <|end|>
@@ -103,7 +81,7 @@ check_prompt = f"""
 
 summarize_prompt = f"""
             <|system|>
-            You are an excellent and concise summary maker.
+            You are an excellent and concise summary maker for conversations.
             Summarize in bullet points the conversation below.
             Do not modify entities names such as trait and marker.
             Give your response in 100 words max. Do not repeat answers.
@@ -127,7 +105,7 @@ summarize_prompt = f"""
 
 synthesize_prompt = f"""
             <|im_start|>system
-            You are an expert synthesizer. Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
+            You are an expert in synthesizing biological information. Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
             Ensure the response is insightful, concise, and draws logical inferences where possible.
             Provide only the final paragraph, nothing else.
             Give your response in 100 words max. Do not repeat answers.
@@ -153,22 +131,29 @@ synthesize_prompt = f"""
 
 split_prompt = f"""
             <|im_start|>system
-            You are a very powerful task generator.
-        
+            You are an expert in genetics. You generate independent subqueries in genetics for parallel processing.
             Split the query into task and context based on tags.
-            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make full sense alone. If an entity is semantically shared between them, make sure to duplicate it so that each sentence has it. The goal is to have very independent subquestions for parallel processing.
+            Based on the context, ask relevant questions that help achieve the task. Make sure the subquestions make fully sense alone. If a marker or trait is shared between the subqueries, make sure to mention it explicitly in each subquery. There should be no words such as "this", "that" or "those" in the subqueries. The goal is to have subquestions that do not have any implicit relationships so that they can be processed separately.
             Return only the subquestions.
             Return strictly a JSON list of strings, nothing else.
             <|im_end|>
             <|im_start|>user
             Query:
             Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Tell me what this marker is involved in biology.
-            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to extract what we know in biology on the marker previously mentioned and link it to the traits identified.
-        
+            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to extract what we know in biology on the marker previously mentioned and link it to the traits identified. 
             Result:
             <|im_end|>
             <|im_start|>assistant
             ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What is Rsm10000011643 involved in biology?"]
+            <|im_end|>
+            <|im_start|>user
+            Query:
+            Task: Identify traits with a lod score > 3.0 for the marker Rsm10000011643. Find what those traits are.
+            Context: A trait name should contain strings like GWA, GEMMA or BXDPublish. The goal is to explain the association to the marker given the trait biology.
+            Result:
+            <|im_end|>
+            <|im_start|>assistant
+            ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What are BXDPublish, GWA or GEMMA traits involved in biology?"]
             <|im_end|>
             <|im_start|>user
             Query:
@@ -179,7 +164,7 @@ split_prompt = f"""
 
 finalize_prompt = f"""
             <|im_start|>system
-            You are an experienced biology scientist. Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query using all information provided.
+            You are an experienced geneticist. Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query using all information provided.
             Ensure the response is insightful, concise, and draws logical inferences where possible.
             Do not modify entities names such as trait and marker.            
             Make sure to link based on what is common in the answers.
