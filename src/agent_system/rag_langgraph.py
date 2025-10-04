@@ -375,7 +375,7 @@ class GNAgent:
         end = time.time()
         logging.info(f"Result in researcher: {result}")
 
-        return result["result"]
+        return {"messages": [result["result"]]}
 
     def planner(self, state: AgentState) -> Any:
         result = process(background=[plan_system_prompt] + state["messages"])
@@ -404,7 +404,7 @@ class GNAgent:
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
-        return result
+        return {"messages": [result]}
 
     def initialize_globgraph(self, state: AgentState) -> Any:
         graph_builder = StateGraph(AgentState)
