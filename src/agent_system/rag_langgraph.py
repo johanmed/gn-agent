@@ -132,11 +132,14 @@ class GNAgent:
         else:
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
-                document = Document(
-                    page_content=chunk, metadata={"source": f"Document {i}"}
-                )
+                metadatas = [
+                    {"source": f"Document {ind}"} for ind in range(i, i + chunk_size)
+                ]
                 db = Chroma.from_texts(
-                    texts=document, embedding=embed_model, persist_directory=db_path
+                    texts=chunk,
+                    metadatas=metadatas,
+                    embedding=embed_model,
+                    persist_directory=db_path,
                 )
                 db.persist()
             return db

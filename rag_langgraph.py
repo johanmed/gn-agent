@@ -44,13 +44,13 @@ logging.basicConfig(
 
 
 # XXX: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/rdf_corpus/"
+CORPUS_PATH = "/home/johannesm/corpus/"
 
 # XXX: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/rdf_tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
 
 # XXX: Remove hard-coded path.
-DB_PATH = "/home/johannesm/rdf_tmp/chroma_db"
+DB_PATH = "/home/johannesm/tmp/chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -130,7 +130,7 @@ class GNQNA:
         if not Path(corpus_path).exists():
             sys.exit(1)
 
-        turtles = glob(f"{corpus_path}*.rdf")
+        turtles = glob(f"{corpus_path}*.ttl")
         g = Graph()
         for turtle in turtles:
             g.parse(turtle, format="ttl")
@@ -172,7 +172,7 @@ class GNQNA:
 
             docs.append(response)
 
-            if len(docs) > total / 10:
+            if len(docs) > total / 100:
                 break
 
         return docs
@@ -187,11 +187,14 @@ class GNQNA:
         else:
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
-                document = Document(
-                    page_content=chunk, metadata={"source": f"Document {i}"}
-                )
+                metadatas = [
+                    {"source": f"Document {ind}"} for ind in range(i, i + chunk_size)
+                ]
                 db = Chroma.from_texts(
-                    texts=document, embedding=embed_model, persist_directory=db_path
+                    texts=chunk,
+                    metadatas=metadatas,
+                    embedding=embed_model,
+                    persist_directory=db_path,
                 )
                 db.persist()
             return db
