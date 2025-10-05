@@ -407,7 +407,7 @@ class GNAgent:
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
-        return {"messages": [result]}
+        return {"next": result}
 
     def initialize_globgraph(self, state: AgentState) -> Any:
         graph_builder = StateGraph(AgentState)
