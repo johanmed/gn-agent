@@ -36,7 +36,7 @@ from typing_extensions import TypedDict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(
-    filename="log_langgraph.txt",
+    filename="log_langgraph2.txt",
     filemode="w",
     level=logging.INFO,
     format="%(asctime)s %(message)s",
@@ -130,7 +130,7 @@ class GNQNA:
         if not Path(corpus_path).exists():
             sys.exit(1)
 
-        turtles = glob(f"{corpus_path}*.ttl")
+        turtles = glob(f"{corpus_path}*.rdf")
         g = Graph()
         for turtle in turtles:
             g.parse(turtle, format="ttl")
@@ -172,7 +172,7 @@ class GNQNA:
 
             docs.append(response)
 
-            if len(docs) > total / 100:
+            if len(docs) > total / 10:
                 break
 
         return docs
@@ -185,10 +185,10 @@ class GNQNA:
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
             return db
         else:
-            for i in tqdm(range(0, len(docs), chunk_size)):
+            for i in tqdm(range(0, len(docs) + 1, chunk_size)):
                 chunk = docs[i : i + chunk_size]
                 metadatas = [
-                    {"source": f"Document {ind}"} for ind in range(i, i + chunk_size)
+                    {"source": f"Document {ind}"} for ind in range(i, i + len(chunk))
                 ]
                 db = Chroma.from_texts(
                     texts=chunk,

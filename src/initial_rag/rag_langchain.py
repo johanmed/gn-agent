@@ -217,7 +217,7 @@ class GNQNA_RAG:
                     chunk = docs[i : i + chunk_size]
                     metadatas = [
                         {"source": f"Document {ind}"}
-                        for ind in range(i, i + chunk_size)
+                        for ind in range(i, i + len(chunk))
                     ]
                     db = Chroma.from_texts(
                         texts=chunk,

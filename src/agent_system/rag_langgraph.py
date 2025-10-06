@@ -133,7 +133,7 @@ class GNAgent:
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
                 metadatas = [
-                    {"source": f"Document {ind}"} for ind in range(i, i + chunk_size)
+                    {"source": f"Document {ind}"} for ind in range(i, i + len(chunk))
                 ]
                 db = Chroma.from_texts(
                     texts=chunk,
