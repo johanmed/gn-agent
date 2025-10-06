@@ -36,7 +36,7 @@ from typing_extensions import TypedDict
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(
-    filename="log_langgraph2.txt",
+    filename="log_langgraph.txt",
     filemode="w",
     level=logging.INFO,
     format="%(asctime)s %(message)s",
@@ -114,7 +114,12 @@ class GNQNA:
 
         # Init'ing the ensemble retriever
         # Explain magic numbers and magic array
-        bm25_retriever = BM25Retriever.from_texts(self.docs, k=10)
+        metadatas = [{"source": f"Document {ind}"} for ind in range(len(self.docs))]
+        bm25_retriever = BM25Retriever.from_texts(
+            texts=self.docs,
+            metadatas=metadatas,
+            k=10,
+        )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
                 self.chroma_db.as_retriever(search_kwargs={"k": 10}),
@@ -182,27 +187,33 @@ class GNQNA:
     ) -> Any:
         logging.info("In set_chroma_db")
         if Path(db_path).exists():
-            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            db = Chroma(
+                persist_directory=db_path,
+                embedding_function=embed_model,
+            )
             return db
         else:
+            db = Chroma(
+                embedding_function=embed_model,
+                persist_directory=db_path,
+            )
             for i in tqdm(range(0, len(docs) + 1, chunk_size)):
                 chunk = docs[i : i + chunk_size]
                 metadatas = [
                     {"source": f"Document {ind}"} for ind in range(i, i + len(chunk))
                 ]
-                db = Chroma.from_texts(
+                db.add_texts(
                     texts=chunk,
                     metadatas=metadatas,
-                    embedding=embed_model,
-                    persist_directory=db_path,
                 )
-                db.persist()
+
+            db.persist()
             return db
 
     def retrieve(self, state: State) -> dict:
 
         # Retrieve documents
-        logging.info("\nRetrieving")
+        logging.info("Retrieving")
 
         retrieved_docs = self.ensemble_retriever.invoke(state["input"])
 
@@ -221,7 +232,7 @@ class GNQNA:
     def analyze(self, state: State) -> dict:
 
         # Analyze documents
-        logging.info("\nAnalysing")
+        logging.info("Analysing")
 
         context = (
             "\n".join(doc.page_content for doc in state.get("context", []))
@@ -270,7 +281,7 @@ class GNQNA:
         with self.generative_lock:
             response = GENERATIVE_MODEL.invoke(prompt)
             response = " ".join(response.split(" ")[:200])  # constraint
-        logging.info(f"\nResponse in analyze: {response}")
+        logging.info(f"Response in analyze: {response}")
 
         should_continue = "check_relevance"
 
@@ -285,7 +296,7 @@ class GNQNA:
     def check_relevance(self, state: State) -> dict:
 
         # Check relevance of retrieved data
-        logging.info("\nChecking relevance")
+        logging.info("Checking relevance")
 
         answer = state["answer"]
 
@@ -317,7 +328,7 @@ class GNQNA:
 
         with self.summary_lock:
             assessment = SUMMARY_MODEL.invoke(prompt)
-        logging.info(f"\nAssessment in checking relevance: {assessment}")
+        logging.info(f"Assessment in checking relevance: {assessment}")
 
         if "yes" in assessment.lower():
             should_continue = "summarize"
@@ -337,7 +348,7 @@ class GNQNA:
     def summarize(self, state: State) -> dict:
 
         # Summarize
-        logging.info("\nSummarizing")
+        logging.info("Summarizing")
 
         existing_history = state.get("chat_history", [])
 
@@ -381,7 +392,7 @@ class GNQNA:
             summary = f"- {state['input']} - No valid answer generated"
 
         updated_history = existing_history + [summary]  # update chat_history
-        logging.info(f"\nChat history in summarize: {updated_history}")
+        logging.info(f"Chat history in summarize: {updated_history}")
 
         # Generate final answer
         if not updated_history:
@@ -466,7 +477,7 @@ class GNQNA:
 
     def split_query(self, query: str) -> list[str]:
 
-        logging.info("\nSplitting query")
+        logging.info("Splitting query")
 
         prompt = f"""
             <|im_start|>system
@@ -516,7 +527,7 @@ class GNQNA:
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
 
-        logging.info("\nFinalizing")
+        logging.info("Finalizing")
 
         prompt = f"""
             <|im_start|>system
@@ -596,7 +607,7 @@ class GNQNA:
 
         concatenated_answer = self.finalize(query, subqueries, answers)
 
-        return {"result": concatenated_answer, "states": results}
+        return concatenated_answer
 
     async def answer_question(self, query: str) -> Any:
         start = time.time()
@@ -614,11 +625,11 @@ async def main():
 
     output = await agent.answer_question(
         """
-    Task: Identify traits with lod scores > 3.0 at markers starting with Rsm100000. Tell me what those traits are involved in biology.
+    Task: Identify traits with lod scores > 3.0 for the marker Rsm10000009332. Tell me what those traits are involved in biology.
     Context: Traits and markers are different. A trait is related to the BXDPublish dataset while a marker is not. The goal is to extract what we know in biology about the traits previously mentioned and link them based on the markers.
     """
     )
-    logging.info("\nFinal answer:", output["result"])
+    logging.info(f"System feedback: {output}")
 
     GENERATIVE_MODEL.client.close()
     SUMMARY_MODEL.client.close()

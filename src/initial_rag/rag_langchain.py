@@ -106,8 +106,12 @@ class GNQNA_RAG:
         )
 
         # Init'ing the ensemble retriever
-        bm25_retriever = BM25Retriever.from_texts(self.docs)
-        bm25_retriever.k = 5  # KLUDGE: Explain why the magic number 5
+        metadatas = [{"source": f"Document {ind}"} for ind in range(len(self.docs))]
+        bm25_retriever = BM25Retriever.from_texts(
+            texts=self.docs,
+            metadatas=metadatas,
+            k=10,
+        )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[self.chroma_db.as_retriever(), bm25_retriever],
             weights=[0.3, 0.7],
@@ -213,19 +217,22 @@ class GNQNA_RAG:
                 db = Chroma(persist_directory=db_path, embedding_function=embed_model)
                 return db
             case _:
-                for i in tqdm(range(0, len(docs), chunk_size)):
+                db = Chroma(
+                    embedding_function=embed_model,
+                    persist_directory=db_path,
+                )
+                for i in tqdm(range(0, len(docs) + 1, chunk_size)):
                     chunk = docs[i : i + chunk_size]
                     metadatas = [
                         {"source": f"Document {ind}"}
                         for ind in range(i, i + len(chunk))
                     ]
-                    db = Chroma.from_texts(
+                    db.add_texts(
                         texts=chunk,
                         metadatas=metadatas,
-                        embedding=embed_model,
-                        persist_directory=db_path,
                     )
-                    db.persist()
+
+                db.persist()
                 return db
 
     def ask_question(self, question: str):

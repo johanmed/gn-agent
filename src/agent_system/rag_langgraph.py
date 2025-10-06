@@ -81,7 +81,12 @@ class GNAgent:
 
         # Init'ing the ensemble retriever
         # Explain magic numbers and magic array
-        bm25_retriever = BM25Retriever.from_texts(self.docs, k=10)
+        metadatas = [{"source": f"Document {ind}"} for ind in range(len(self.docs))]
+        bm25_retriever = BM25Retriever.from_texts(
+            texts=self.docs,
+            metadatas=metadatas,
+            k=10,
+        )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
                 self.chroma_db.as_retriever(search_kwargs={"k": 10}),
@@ -130,24 +135,27 @@ class GNAgent:
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
             return db
         else:
-            for i in tqdm(range(0, len(docs), chunk_size)):
+            db = Chroma(
+                embedding_function=embed_model,
+                persist_directory=db_path,
+            )
+            for i in tqdm(range(0, len(docs) + 1, chunk_size)):
                 chunk = docs[i : i + chunk_size]
                 metadatas = [
                     {"source": f"Document {ind}"} for ind in range(i, i + len(chunk))
                 ]
-                db = Chroma.from_texts(
+                db.add_texts(
                     texts=chunk,
                     metadatas=metadatas,
-                    embedding=embed_model,
-                    persist_directory=db_path,
                 )
-                db.persist()
+
+            db.persist()
             return db
 
     def retrieve(self, state: State) -> dict:
 
         # Retrieve documents
-        logging.info("\nRetrieving")
+        logging.info("Retrieving")
 
         with self.retriever_lock:
             retrieved_docs = self.ensemble_retriever.invoke(state["input"])
@@ -167,7 +175,7 @@ class GNAgent:
     def analyze(self, state: State) -> dict:
 
         # Analyze documents
-        logging.info("\nAnalysing")
+        logging.info("Analysing")
 
         context = (
             "\n".join(doc.page_content for doc in state.get("context", []))
@@ -184,7 +192,7 @@ class GNAgent:
         with self.generative_lock:
             response = deep_generate(question=analyze_prompt)
 
-        logging.info(f"\nResponse in analyze: {response}")
+        logging.info(f"Response in analyze: {response}")
 
         response = " ".join(response.get("answer").split(" ")[:200])  # constraint
         should_continue = "check_relevance"
@@ -200,13 +208,13 @@ class GNAgent:
     def check_relevance(self, state: State) -> dict:
 
         # Check relevance of retrieved data
-        logging.info("\nChecking relevance")
+        logging.info("Checking relevance")
 
         answer = state["answer"]
 
         with self.summary_lock:
             assessment = shallow_generate(question=check_prompt)
-        logging.info(f"\nAssessment in checking relevance: {assessment}")
+        logging.info(f"Assessment in checking relevance: {assessment}")
 
         if "yes" in assessment.get("answer").lower():
             should_continue = "summarize"
@@ -226,7 +234,7 @@ class GNAgent:
     def summarize(self, state: State) -> dict:
 
         # Summarize
-        logging.info("\nSummarizing")
+        logging.info("Summarizing")
 
         existing_history = state.get("chat_history", [])
 
@@ -247,7 +255,7 @@ class GNAgent:
             summary = f"- {state['input']} - No valid answer generated"
 
         updated_history = existing_history + [summary]  # update chat_history
-        logging.info(f"\nChat history in summarize: {updated_history}")
+        logging.info(f"Chat history in summarize: {updated_history}")
 
         # Generate final answer
         if not updated_history:
@@ -307,7 +315,7 @@ class GNAgent:
 
     def split_query(self, query: str) -> list[str]:
 
-        logging.info("\nSplitting query")
+        logging.info("Splitting query")
 
         with self.generative_lock:
             result = deep_generate(question=split_prompt)
@@ -326,7 +334,7 @@ class GNAgent:
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
 
-        logging.info("\nFinalizing")
+        logging.info("Finalizing")
 
         with self.generative_lock:
             result = deep_generate(question=finalize_prompt)
@@ -370,9 +378,10 @@ class GNAgent:
 
         concatenated_answer = self.finalize(query, subqueries, answers)
 
-        return {"result": concatenated_answer, "states": results}
+        return concatenated_answer
 
     async def researcher(self, query: str) -> Any:
+        logging.info("Researching")
         start = time.time()
         result = self.manage_subtasks(query)
         end = time.time()
@@ -381,12 +390,14 @@ class GNAgent:
         return {"messages": [result["result"]]}
 
     def planner(self, state: AgentState) -> Any:
+        logging.info("Planning")
         result = process(background=[plan_system_prompt] + state["messages"])
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
         return {"messages": [answer]}
 
     def reflector(self, state: AgentState) -> Any:
+        logging.info("Reflecting")
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
         translated_messages = [refl_system_prompt, state["messages"][0]] + [
             trans_map[msg.__class__](msg) for msg in state["messages"][1:]
@@ -397,6 +408,7 @@ class GNAgent:
         return {"messages": [HumanMessage(answer)]}
 
     def supervisor(self, state: AgentState) -> Any:
+        logging.info("Supervising")
         messages = [
             ("system", sup_system_prompt1),
             *state["messages"],
