@@ -23,7 +23,7 @@ naturalize_prompt = {
             traitBxd_20537 is referenced by unpublished22893 and has been tested for Rsm10000002554"""
         ),
         HumanMessage(
-            f"""
+            """
             Take following RDF data andmake it sound like Plain English.
             You should return a coherent paragraph with clear sentences.
             Data: {text}
@@ -59,13 +59,13 @@ analyze_prompt = {
             Rsm1001."""
         ),
         HumanMessage(
-            f"""
+            """
             Context:
             {context}
             History:
             {existing_history}
             Question:
-            {state["input"]}
+            {input}
             Answer:"""
         ),
     ]
@@ -90,11 +90,11 @@ check_prompt = {
         ),
         AIMessage("yes"),
         HumanMessage(
-            f"""
+            """
             Answer:
             {answer}
             Query:
-            {state["input"]}
+            {input}
             Decision:"""
         ),
     ]
@@ -122,7 +122,7 @@ summarize_prompt = {
             Two traits involved in diabetes have a lod score of 1.9 and 4.7 at Rs71192."""
         ),
         HumanMessage(
-            f"""
+            """
             Conversation:
             {full_context}:
             Summary:"""
@@ -152,9 +152,9 @@ synthesize_prompt = {
             The lod score at Rs71192 for trait A (1.9) is less than for trait B (4.7)."""
         ),
         HumanMessage(
-            f"""
+            """
             Original question:
-            {state["input"]}
+            {input}
             Summarized history:
             {updated_history}
             Conclusion:"""
@@ -192,7 +192,7 @@ split_prompt = {
             ["What BXDPublish, GWA or GEMMA traits  have a lod score > 3.0 at Rsm10000011643?", "What are BXDPublish, GWA or GEMMA traits involved in biology?"]"""
         ),
         HumanMessage(
-            f"""
+            """
             Query:
             {query}
             Result:"""
@@ -231,7 +231,7 @@ finalize_prompt = {
             gene close to the marker Rsm149505."""
         ),
         HumanMessage(
-            f"""
+            """
             Query:
             {query}
             Subqueries:

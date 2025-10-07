@@ -116,6 +116,7 @@ class GNAgent:
                 text += f"{predicate}:{obj}\n"
 
             with self.generative_lock:
+                naturalize_prompt = naturalize_prompt.format(text=text)
                 response = deep_generate(question=naturalize_prompt)
                 response = response.get("answer")
             # print(f"Documents: {response}")
@@ -190,6 +191,9 @@ class GNAgent:
         )
 
         with self.generative_lock:
+            analyze_prompt = analyze_prompt.format(
+                context=context, existing_history=existing_history, input=state["input"]
+            )
             response = deep_generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
@@ -213,6 +217,7 @@ class GNAgent:
         answer = state["answer"]
 
         with self.summary_lock:
+            check_prompt = check_prompt.format(answer=answer, input=state["input"])
             assessment = shallow_generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
@@ -248,6 +253,7 @@ class GNAgent:
         )
 
         with self.summary_lock:
+            summarize_prompt = summarize_prompt.format(full_context=full_context)
             summary = shallow_generate(question=summarize_prompt)
             summary = summary.get("answer")
 
@@ -262,6 +268,9 @@ class GNAgent:
             final_answer = "Insufficient data for analysis."
         else:
             with self.generative_lock:
+                synthesize_prompt = synthesize_prompt.format(
+                    input=state["input"], updated_history=updated_history
+                )
                 result = deep_generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
@@ -318,6 +327,7 @@ class GNAgent:
         logging.info("Splitting query")
 
         with self.generative_lock:
+            split_prompt = split_prompt.format(query=query)
             result = deep_generate(question=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
@@ -337,6 +347,9 @@ class GNAgent:
         logging.info("Finalizing")
 
         with self.generative_lock:
+            finalize_prompt = finalize_prompt.format(
+                query=query, subqueries=subqueries, answers=answers
+            )
             result = deep_generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")

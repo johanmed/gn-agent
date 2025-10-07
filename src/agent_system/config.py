@@ -35,7 +35,7 @@ DB_PATH = "/home/johannesm/tmp/chroma_db"
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 GENERATIVE_MODEL = dspy.LM(
-    model="openai/unsloth/phi-4-unsloth-bnb-4bit",
+    model="openai/microsoft/Phi-3-mini-4k-instruct",
     api_base="http://localhost:7501/v1",
     api_key="local",
     model_type="chat",
