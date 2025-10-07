@@ -2,13 +2,13 @@
 Setup and LLMs
 
 1. Embedding model = Qwen/Qwen3-Embedding-0.6B
-2. Generative model = calme-3.2-instruct-78b-Q4_K_S (very large model)
-3. Summary model = Phi-3-mini-4k-instruct (small model)
+2. Generative model = Tsunami-th/Tsunami-0.5-7B-Instruct (large model)
+3. Summary model = microsoft/Phi-3-mini-4k-instruct (small model)
 """
 
 import logging
 import warnings
-from typing import Annotated, Literal
+from typing import Literal
 
 import dspy
 from langchain_core.messages import BaseMessage
@@ -23,19 +23,19 @@ logging.basicConfig(
 
 
 # X: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/rdf_corpus/"
+CORPUS_PATH = "/home/johannesm/corpus/"
 
 # X: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/rdf_tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
 
 # X: Remove hard-coded path.
-DB_PATH = "/home/johannesm/rdf_tmp/chroma_db"
+DB_PATH = "/home/johannesm/tmp/chroma_db"
 
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 GENERATIVE_MODEL = dspy.LM(
-    model="openai/MaziyarPanahi/calme-3.2-instruct-78b",
+    model="openai/unsloth/phi-4-unsloth-bnb-4bit",
     api_base="http://localhost:7501/v1",
     api_key="local",
     model_type="chat",
@@ -47,7 +47,7 @@ GENERATIVE_MODEL = dspy.LM(
 )
 
 SUMMARY_MODEL = dspy.LM(
-    model="microsoft/Phi-3-mini-4k-instruct",
+    model="openai/microsoft/Phi-3-mini-4k-instruct",
     api_base="http://localhost:7502/v1",
     api_key="local",
     model_type="chat",
@@ -64,7 +64,7 @@ shallow_generate = dspy.ChainOfThought("question -> answer: str", lm=SUMMARY_MOD
 
 
 class SupervisorDecision(dspy.Signature):
-    background: Annotated[list[BaseMessage]] = dspy.InputField()
+    background: list[BaseMessage] = dspy.InputField()
     next: Literal["researcher", "planner", "reflector", "end"] = dspy.OutputField()
     reasoning: str = dspy.OutputField()
 
@@ -73,7 +73,7 @@ supervise = dspy.Predict(SupervisorDecision)
 
 
 class Process(dspy.Signature):
-    background: Annotated[list[BaseMessage]] = dspy.InputField()
+    background: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField()
     reasoning: str = dspy.OutputField()
 
