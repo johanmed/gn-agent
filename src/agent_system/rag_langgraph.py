@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from glob import glob
 from pathlib import Path
 from threading import Lock
-from typing import Any
+from typing import Any, Literal
 
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
@@ -54,6 +54,17 @@ class GNAgent:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    naturalize_prompt: Any
+    analyze_prompt: Any
+    check_prompt: Any
+    summarize_prompt: Any
+    synthesize_prompt: Any
+    split_prompt: Any
+    finalize_prompt: Any
+    sup_system_prompt1: Any
+    sup_system_prompt2: Any
+    plan_system_prompt: Any
+    refl_system_prompt: Any
     max_global_visits: int = 15  # max visits allowed in the global graph
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
@@ -74,7 +85,9 @@ class GNAgent:
 
         self.chroma_db = self.set_chroma_db(
             docs=self.docs,
-            embed_model=HuggingFaceEmbeddings(model_name=EMBED_MODEL),
+            embed_model=HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL, model_kwargs={"trust_remote_code": True}
+            ),
             db_path=self.db_path,
         )
 
@@ -115,7 +128,10 @@ class GNAgent:
                 text += f"{predicate}:{obj}\n"
 
             with self.generative_lock:
-                naturalize_prompt = naturalize_prompt.format(text=text)
+                naturalize_prompt = self.naturalize_prompt
+                last_content = naturalize_prompt["messages"][-1].content
+                formatted = last_content.format(text=text)
+                naturalize_prompt["messages"][-1] = HumanMessage(formatted)
                 response = generate(question=naturalize_prompt)
                 response = response.get("answer")
             # print(f"Documents: {response}")
@@ -190,9 +206,12 @@ class GNAgent:
         )
 
         with self.generative_lock:
-            analyze_prompt = analyze_prompt.format(
+            analyze_prompt = self.analyze_prompt
+            last_content = analyze_prompt["messages"][-1].content
+            formatted = last_content.format(
                 context=context, existing_history=existing_history, input=state["input"]
             )
+            analyze_prompt["messages"][-1] = HumanMessage(formatted)
             response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
@@ -216,7 +235,10 @@ class GNAgent:
         answer = state["answer"]
 
         with self.generative_lock:
-            check_prompt = check_prompt.format(answer=answer, input=state["input"])
+            check_prompt = self.check_prompt
+            last_content = check_prompt["messages"][-1].content
+            formatted = last_content.format(answer=answer, input=state["input"])
+            check_prompt["messages"][-1] = HumanMessage(formatted)
             assessment = generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
@@ -252,7 +274,10 @@ class GNAgent:
         )
 
         with self.generative_lock:
-            summarize_prompt = summarize_prompt.format(full_context=full_context)
+            summarize_prompt = self.summarize_prompt
+            last_content = summarize_prompt["messages"][-1].content
+            formatted = last_content.format(full_context=full_context)
+            summarize_prompt["messages"][-1] = HumanMessage(formatted)
             summary = generate(question=summarize_prompt)
             summary = summary.get("answer")
 
@@ -267,9 +292,12 @@ class GNAgent:
             final_answer = "Insufficient data for analysis."
         else:
             with self.generative_lock:
-                synthesize_prompt = synthesize_prompt.format(
+                synthesize_prompt = self.synthesize_prompt
+                last_content = synthesize_prompt["messages"][-1].content
+                formatted = last_content.format(
                     input=state["input"], updated_history=updated_history
                 )
+                synthesize_prompt["messages"][-1] = HumanMessage(formatted)
                 result = generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
@@ -288,7 +316,7 @@ class GNAgent:
             "chat_history": updated_history,
         }
 
-    def initialize_subgraph(self, state: State) -> Any:
+    def initialize_subgraph(self) -> Any:
         graph_builder = StateGraph(State)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
@@ -326,29 +354,28 @@ class GNAgent:
         logging.info("Splitting query")
 
         with self.generative_lock:
-            split_prompt = split_prompt.format(query=query)
-            result = generate(question=split_prompt)
+            split_prompt = self.split_prompt
+            last_content = split_prompt["messages"][-1].content
+            formatted = last_content.format(query=query)
+            split_prompt["messages"][-1] = HumanMessage(formatted)
+            result = subquery(query=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
         result = result.get("answer")
 
-        if isinstance(result, str):
-            start = result.find("[")
-            end = result.rfind("]") + 1
-            subqueries = json.loads(result[start:end])
-        else:
-            subqueries = [query]
-
-        return subqueries
+        return result
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
 
         logging.info("Finalizing")
 
         with self.generative_lock:
-            finalize_prompt = finalize_prompt.format(
+            finalize_prompt = self.finalize_prompt
+            last_content = finalize_prompt["messages"][-1].content
+            formatted = last_content.format(
                 query=query, subqueries=subqueries, answers=answers
             )
+            finalize["messages"][-1] = HumanMessage(formatted)
             result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
@@ -392,18 +419,21 @@ class GNAgent:
 
         return concatenated_answer
 
-    async def researcher(self, query: str) -> Any:
+    def researcher(self, state: AgentState) -> Any:
         logging.info("Researching")
         start = time.time()
+        query = state.messages[-1]
+        query = query.content
+        logging.info(f"Query in researcher: {query}")
         result = self.manage_subtasks(query)
         end = time.time()
         logging.info(f"Result in researcher: {result}")
 
-        return {"messages": [result["result"]]}
+        return {"messages": [result]}
 
     def planner(self, state: AgentState) -> Any:
         logging.info("Planning")
-        result = process(background=[plan_system_prompt] + state["messages"])
+        result = process(background=[self.plan_system_prompt] + state.messages)
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
         return {"messages": [answer]}
@@ -411,8 +441,8 @@ class GNAgent:
     def reflector(self, state: AgentState) -> Any:
         logging.info("Reflecting")
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
-        translated_messages = [refl_system_prompt, state["messages"][0]] + [
-            trans_map[msg.__class__](msg) for msg in state["messages"][1:]
+        translated_messages = [self.refl_system_prompt, state.messages[0]] + [
+            trans_map[msg.__class__](content=msg.content) for msg in state.messages[1:]
         ]
         result = process(background=translated_messages)
         logging.info(f"Result in reflector: {result}")
@@ -422,50 +452,73 @@ class GNAgent:
     def supervisor(self, state: AgentState) -> Any:
         logging.info("Supervising")
         messages = [
-            ("system", sup_system_prompt1),
-            *state["messages"],
-            ("system", sup_system_prompt2),
+            ("system", self.sup_system_prompt1),
+            *state.messages,
+            ("system", self.sup_system_prompt2),
         ]
         if len(messages) >= self.max_global_visits:
-            return END
+            return {"next": "end"}
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
         return {"next": result}
 
-    def initialize_globgraph(self, state: AgentState) -> Any:
+    def initialize_globgraph(self) -> Any:
         graph_builder = StateGraph(AgentState)
         graph_builder.add_node("researcher", self.researcher)
         graph_builder.add_node("planner", self.planner)
         graph_builder.add_node("reflector", self.reflector)
         graph_builder.add_node("supervisor", self.supervisor)
-        graph_builder.add_edge(START, "supervisor")
+        graph_builder.add_edge(START, "researcher")
         graph_builder.add_edge("researcher", "supervisor")
         graph_builder.add_edge("planner", "supervisor")
         graph_builder.add_edge("reflector", "supervisor")
-        graph_builder.add_edge("end", END)
-        graph_builder.add_conditional_edges("supervisor", lambda state: state["next"])
+        graph_builder.add_conditional_edges(
+            "supervisor",
+            lambda state: state.next,
+            {
+                "planner": "planner",
+                "reflector": "reflector",
+                "researcher": "researcher",
+                "end": END,
+            },
+        )
         graph = graph_builder.compile()
 
         return graph
 
-    def invoke_globgraph(self, query: str) -> Any:
-        graph = initialize_globgraph()
+    async def invoke_globgraph(self, query: str) -> Any:
+        graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": Literal["supervisor"],
+            "next": "researcher",
         }
-        result = graph.ainvoke(initial_state)
+        result = await graph.ainvoke(initial_state)
 
         return result
 
-    def handler(self, query: str) -> Any:
-        global_result = asyncio.run(self.invoke_globgraph(query))
+    async def handler(self, query: str) -> Any:
+        global_result = await self.invoke_globgraph(query)
         return global_result
 
 
 async def main():
-    agent = GNAgent(corpus_path=CORPUS_PATH, pcorpus_path=PCORPUS_PATH, db_path=DB_PATH)
+    agent = GNAgent(
+        corpus_path=CORPUS_PATH,
+        pcorpus_path=PCORPUS_PATH,
+        db_path=DB_PATH,
+        naturalize_prompt=naturalize_prompt,
+        analyze_prompt=analyze_prompt,
+        check_prompt=check_prompt,
+        summarize_prompt=summarize_prompt,
+        synthesize_prompt=synthesize_prompt,
+        split_prompt=split_prompt,
+        finalize_prompt=finalize_prompt,
+        sup_system_prompt1=sup_system_prompt1,
+        sup_system_prompt2=sup_system_prompt2,
+        plan_system_prompt=plan_system_prompt,
+        refl_system_prompt=refl_system_prompt,
+    )
 
     output = await agent.handler(question)
     logging.info("\nSystem feedback:", output)
