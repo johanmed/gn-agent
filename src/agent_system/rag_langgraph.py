@@ -59,7 +59,6 @@ class GNAgent:
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
     generative_lock: Lock = field(init=False, default_factory=Lock)
-    summary_lock: Lock = field(init=False, default_factory=Lock)
     retriever_lock: Lock = field(init=False, default_factory=Lock)
 
     def __post_init__(self):
@@ -117,7 +116,7 @@ class GNAgent:
 
             with self.generative_lock:
                 naturalize_prompt = naturalize_prompt.format(text=text)
-                response = deep_generate(question=naturalize_prompt)
+                response = generate(question=naturalize_prompt)
                 response = response.get("answer")
             # print(f"Documents: {response}")
 
@@ -194,7 +193,7 @@ class GNAgent:
             analyze_prompt = analyze_prompt.format(
                 context=context, existing_history=existing_history, input=state["input"]
             )
-            response = deep_generate(question=analyze_prompt)
+            response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
 
@@ -216,9 +215,9 @@ class GNAgent:
 
         answer = state["answer"]
 
-        with self.summary_lock:
+        with self.generative_lock:
             check_prompt = check_prompt.format(answer=answer, input=state["input"])
-            assessment = shallow_generate(question=check_prompt)
+            assessment = generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
         if "yes" in assessment.get("answer").lower():
@@ -252,9 +251,9 @@ class GNAgent:
             else current_interaction
         )
 
-        with self.summary_lock:
+        with self.generative_lock:
             summarize_prompt = summarize_prompt.format(full_context=full_context)
-            summary = shallow_generate(question=summarize_prompt)
+            summary = generate(question=summarize_prompt)
             summary = summary.get("answer")
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
@@ -271,7 +270,7 @@ class GNAgent:
                 synthesize_prompt = synthesize_prompt.format(
                     input=state["input"], updated_history=updated_history
                 )
-                result = deep_generate(question=synthesize_prompt)
+                result = generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
             result = result.get("answer")
@@ -328,7 +327,7 @@ class GNAgent:
 
         with self.generative_lock:
             split_prompt = split_prompt.format(query=query)
-            result = deep_generate(question=split_prompt)
+            result = generate(question=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
         result = result.get("answer")
@@ -350,7 +349,7 @@ class GNAgent:
             finalize_prompt = finalize_prompt.format(
                 query=query, subqueries=subqueries, answers=answers
             )
-            result = deep_generate(question=finalize_prompt)
+            result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
         result = result.get("answer")

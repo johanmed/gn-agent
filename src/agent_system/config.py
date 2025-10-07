@@ -2,8 +2,7 @@
 Setup and LLMs
 
 1. Embedding model = Qwen/Qwen3-Embedding-0.6B
-2. Generative model = Tsunami-th/Tsunami-0.5-7B-Instruct (large model)
-3. Summary model = microsoft/Phi-3-mini-4k-instruct (small model)
+2. Generative model = Qwen/Qwen2.5-0.5B
 """
 
 import logging
@@ -35,7 +34,7 @@ DB_PATH = "/home/johannesm/tmp/chroma_db"
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 GENERATIVE_MODEL = dspy.LM(
-    model="openai/microsoft/Phi-3-mini-4k-instruct",
+    model="openai/Qwen/Qwen2.5-0.5B",
     api_base="http://localhost:7501/v1",
     api_key="local",
     model_type="chat",
@@ -46,21 +45,8 @@ GENERATIVE_MODEL = dspy.LM(
     verbose=False,
 )
 
-SUMMARY_MODEL = dspy.LM(
-    model="openai/microsoft/Phi-3-mini-4k-instruct",
-    api_base="http://localhost:7502/v1",
-    api_key="local",
-    model_type="chat",
-    max_tokens=1_000,
-    n_ctx=4_096,
-    seed=2025,
-    temperature=0,
-    verbose=False,
-)
 
-deep_generate = dspy.ChainOfThought("question -> answer: str", lm=GENERATIVE_MODEL)
-
-shallow_generate = dspy.ChainOfThought("question -> answer: str", lm=SUMMARY_MODEL)
+generate = dspy.ChainOfThought("question -> answer: str", lm=GENERATIVE_MODEL)
 
 
 class SupervisorDecision(dspy.Signature):
@@ -69,7 +55,7 @@ class SupervisorDecision(dspy.Signature):
     reasoning: str = dspy.OutputField()
 
 
-supervise = dspy.Predict(SupervisorDecision)
+supervise = dspy.Predict(SupervisorDecision, lm=GENERATIVE_MODEL)
 
 
 class Process(dspy.Signature):
@@ -78,4 +64,4 @@ class Process(dspy.Signature):
     reasoning: str = dspy.OutputField()
 
 
-process = dspy.Predict(Process)
+process = dspy.Predict(Process, lm=GENERATIVE_MODEL)
