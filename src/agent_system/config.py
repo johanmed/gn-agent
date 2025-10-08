@@ -1,8 +1,7 @@
 """
 Setup and LLMs
-
 1. Embedding model = Qwen/Qwen3-Embedding-0.6B
-2. Generative model = Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8
+2. Generative model = Qwen/Qwen2.5-3B-Instruct
 """
 
 import logging
@@ -34,7 +33,7 @@ DB_PATH = "/home/johannesm/tmp/chroma_db"
 EMBED_MODEL = "Alibaba-NLP/gte-multilingual-base"
 
 GENERATIVE_MODEL = dspy.LM(
-    model="openai/Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int8",
+    model="openai/Qwen/Qwen2.5-3B-Instruct",
     api_base="http://localhost:7501/v1",
     api_key="local",
     model_type="chat",
@@ -54,7 +53,7 @@ class Subquery(dspy.Signature):
     query: str = dspy.InputField(desc="the query to address")
     answer: list = dspy.OutputField(desc="the answer to the query")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 20 words."
+        desc="Provide a concise explanation for the input, limited to approximately 50 words."
     )
 
 
@@ -69,7 +68,7 @@ class SupervisorDecision(dspy.Signature):
         desc="the next step to take"
     )
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 20 words."
+        desc="Provide a concise explanation for the input, limited to approximately 50 words."
     )
 
 
@@ -82,7 +81,7 @@ class Process(dspy.Signature):
     )
     answer: str = dspy.OutputField(desc="the task result")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 20 words."
+        desc="Provide a concise explanation for the input, limited to approximately 50 words."
     )
 
 

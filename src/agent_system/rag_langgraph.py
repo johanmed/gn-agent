@@ -1,8 +1,7 @@
 """
 This a multi-agent system for genomic analysis
-
 Author: Johannes Medagbe
-Copyright 2025
+Copyright (c) 2025
 """
 
 import asyncio
@@ -47,7 +46,7 @@ class State(TypedDict):
 class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages]
     next: Literal["researcher", "planner", "reflector", "end"]
-
+    history: list
 
 @dataclass
 class GNAgent:
@@ -65,7 +64,7 @@ class GNAgent:
     sup_system_prompt2: Any
     plan_system_prompt: Any
     refl_system_prompt: Any
-    max_global_visits: int = 15  # max visits allowed in the global graph
+    max_global_visits: int = 10  # max visits allowed in the global graph
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
@@ -375,7 +374,7 @@ class GNAgent:
             formatted = last_content.format(
                 query=query, subqueries=subqueries, answers=answers
             )
-            finalize["messages"][-1] = HumanMessage(formatted)
+            finalize_prompt["messages"][-1] = HumanMessage(formatted)
             result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
@@ -422,21 +421,27 @@ class GNAgent:
     def researcher(self, state: AgentState) -> Any:
         logging.info("Researching")
         start = time.time()
-        query = state.messages[-1]
-        query = query.content
-        logging.info(f"Query in researcher: {query}")
-        result = self.manage_subtasks(query)
+        input = state.messages[-1]
+        input = input.content
+        logging.info(f"Input in researcher: {input}")
+        result = self.manage_subtasks(input)
         end = time.time()
         logging.info(f"Result in researcher: {result}")
 
-        return {"messages": [result]}
+        return {"messages": [result],
+                "history": state.history + ["researcher"],
+                }
 
     def planner(self, state: AgentState) -> Any:
         logging.info("Planning")
-        result = process(background=[self.plan_system_prompt] + state.messages)
+        input = [self.plan_system_prompt] + state.messages
+        logging.info(f"Input in planner: {input}")
+        result = process(background=input)
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
-        return {"messages": [answer]}
+        return {"messages": [answer],
+                "history": state.history + ["planner"],
+                }
 
     def reflector(self, state: AgentState) -> Any:
         logging.info("Reflecting")
@@ -444,10 +449,13 @@ class GNAgent:
         translated_messages = [self.refl_system_prompt, state.messages[0]] + [
             trans_map[msg.__class__](content=msg.content) for msg in state.messages[1:]
         ]
+        logging.info(f"Input in reflector: {translated_messages}")
         result = process(background=translated_messages)
         logging.info(f"Result in reflector: {result}")
         answer = result.get("answer")
-        return {"messages": [HumanMessage(answer)]}
+        return {"messages": [HumanMessage(answer)],
+                "history": state.history + ["reflector"]
+                }
 
     def supervisor(self, state: AgentState) -> Any:
         logging.info("Supervising")
@@ -455,13 +463,17 @@ class GNAgent:
             ("system", self.sup_system_prompt1),
             *state.messages,
             ("system", self.sup_system_prompt2),
+            *state.history,
         ]
         if len(messages) >= self.max_global_visits:
             return {"next": "end"}
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
-        return {"next": result}
+        return {"next": result,
+                "messages": state.messages,
+                "history": state.history,
+                }
 
     def initialize_globgraph(self) -> Any:
         graph_builder = StateGraph(AgentState)
@@ -469,7 +481,7 @@ class GNAgent:
         graph_builder.add_node("planner", self.planner)
         graph_builder.add_node("reflector", self.reflector)
         graph_builder.add_node("supervisor", self.supervisor)
-        graph_builder.add_edge(START, "researcher")
+        graph_builder.add_edge(START, "planner")
         graph_builder.add_edge("researcher", "supervisor")
         graph_builder.add_edge("planner", "supervisor")
         graph_builder.add_edge("reflector", "supervisor")
@@ -491,7 +503,8 @@ class GNAgent:
         graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": "researcher",
+            "history": [],
+            "next": "planner",
         }
         result = await graph.ainvoke(initial_state)
 
@@ -521,7 +534,7 @@ async def main():
     )
 
     output = await agent.handler(question)
-    logging.info("\nSystem feedback:", output)
+    logging.info(f"System feedback: {output.get('messages')}")
 
 
 if __name__ == "__main__":
