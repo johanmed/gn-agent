@@ -48,6 +48,7 @@ class AgentState(BaseModel):
     next: Literal["researcher", "planner", "reflector", "end"]
     history: list
 
+
 @dataclass
 class GNAgent:
     corpus_path: str
@@ -106,7 +107,9 @@ class GNAgent:
             weights=[0.4, 0.6],
         )
 
-    def corpus_to_docs(self, corpus_path: str) -> list:
+    def corpus_to_docs(
+        self, corpus_path: str, chunk_size: int = 10
+    ) -> list:  # Small chunk size to prevent naturalization hallucinations
         logging.info("In corpus_to_docs")
 
         # Check for corpus. Exit if no corpus.
@@ -119,32 +122,32 @@ class GNAgent:
             g.parse(turtle, format="ttl")
 
         docs = []
-        total = len(set(g.subjects()))
 
         for subject in tqdm(set(g.subjects())):
-            text = f"{subject}:"
+            chunks = []
             for predicate, obj in g.predicate_objects(subject):
-                text += f"{predicate}:{obj}\n"
+                text = f"\nSubject {subject} with predicate {predicate} has a value of {obj}"
+                chunks.append(text)
 
             with self.generative_lock:
-                naturalize_prompt = self.naturalize_prompt
+                naturalize_prompt = self.naturalize_prompt.copy()
                 last_content = naturalize_prompt["messages"][-1].content
-                formatted = last_content.format(text=text)
-                naturalize_prompt["messages"][-1] = HumanMessage(formatted)
-                response = generate(question=naturalize_prompt)
-                response = response.get("answer")
-            # print(f"Documents: {response}")
+                for i in range(0, len(chunks) + 1, chunk_size):
+                    chunk = chunks[i : i + chunk_size]
+                    text = "".join(chunk)
+                    formatted = last_content.format(text=text)
+                    naturalize_prompt["messages"] = self.naturalize_prompt["messages"][:-1] + [HumanMessage(formatted)]
+                    response = generate(question=naturalize_prompt)
+                    response = response.get("answer")
 
-            docs.append(response)
-
-            if len(docs) > total / 10:
-                break
+                    # logging.info(f"Documents: {response}")
+                    docs.append(response)
 
         return docs
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 500
-    ) -> Any:
+    ) -> Any:  # Big chunksize
         logging.info("In set_chroma_db")
         if Path(db_path).exists():
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
@@ -428,9 +431,10 @@ class GNAgent:
         end = time.time()
         logging.info(f"Result in researcher: {result}")
 
-        return {"messages": [result],
-                "history": state.history + ["researcher"],
-                }
+        return {
+            "messages": [result],
+            "history": state.history + ["researcher"],
+        }
 
     def planner(self, state: AgentState) -> Any:
         logging.info("Planning")
@@ -439,9 +443,10 @@ class GNAgent:
         result = process(background=input)
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
-        return {"messages": [answer],
-                "history": state.history + ["planner"],
-                }
+        return {
+            "messages": [answer],
+            "history": state.history + ["planner"],
+        }
 
     def reflector(self, state: AgentState) -> Any:
         logging.info("Reflecting")
@@ -453,9 +458,10 @@ class GNAgent:
         result = process(background=translated_messages)
         logging.info(f"Result in reflector: {result}")
         answer = result.get("answer")
-        return {"messages": [HumanMessage(answer)],
-                "history": state.history + ["reflector"]
-                }
+        return {
+            "messages": [HumanMessage(answer)],
+            "history": state.history + ["reflector"],
+        }
 
     def supervisor(self, state: AgentState) -> Any:
         logging.info("Supervising")
@@ -470,10 +476,11 @@ class GNAgent:
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         result = result.get("next")
-        return {"next": result,
-                "messages": state.messages,
-                "history": state.history,
-                }
+        return {
+            "next": result,
+            "messages": state.messages,
+            "history": state.history,
+        }
 
     def initialize_globgraph(self) -> Any:
         graph_builder = StateGraph(AgentState)

@@ -1,6 +1,6 @@
 """
 Setup and LLMs
-1. Embedding model = Qwen/Qwen3-Embedding-0.6B
+1. Embedding model = Alibaba-NLP/gte-multilingual-base
 2. Generative model = Qwen/Qwen2.5-3B-Instruct
 """
 
@@ -21,13 +21,13 @@ logging.basicConfig(
 
 
 # X: Remove hard-coded path.
-CORPUS_PATH = "/home/johannesm/corpus/"
+CORPUS_PATH = "/home/johannesm/qtl_corpus/"
 
 # X: Remove hard_coded path.
-PCORPUS_PATH = "/home/johannesm/tmp/docs.txt"
+PCORPUS_PATH = "/home/johannesm/qtl_tmp/full_docs.txt"
 
 # X: Remove hard-coded path.
-DB_PATH = "/home/johannesm/tmp/chroma_db"
+DB_PATH = "/home/johannesm/qtl_tmp/full_chroma_db"
 
 
 EMBED_MODEL = "Alibaba-NLP/gte-multilingual-base"

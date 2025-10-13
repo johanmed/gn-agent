@@ -9,24 +9,10 @@ naturalize_prompt = {
         ),
         HumanMessage(
             """
-            Take following data and make it sound like Plain English.
-            You should return a coherent paragraph with clear sentences.
-            Data: "http://genenetwork.org/id/traitBxd_20537:\
-            http://purl.org/dc/terms/isReferencedBy: \
-            http://genenetwork.org/id/unpublished22893\n \
-            http://genenetwork.org/term/locus: \
-            http://genenetwork.org/id/Rsm10000002554
-            Result:"""
-        ),
-        AIMessage(
-            """
-            traitBxd_20537 is referenced by unpublished22893 and has been tested for Rsm10000002554"""
-        ),
-        HumanMessage(
-            """
-            Take following RDF data andmake it sound like Plain English.
-            You should return a coherent paragraph with clear sentences.
-            Data: {text}
+            Take this new RDF data and make it sound like Plain English.
+            Use the subject, predicate and object to build sentences. You can later link sentences to form paragraphs.
+            You should return a coherent paragraph.
+            New RDF data: {text}
             Result:"""
         ),
     ]

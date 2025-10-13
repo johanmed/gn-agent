@@ -1,7 +1,5 @@
 def make_question_prompt(question: str) -> str:
-    return (
-        f"Use all resources at your disposal to answer the following question: {question}"
-    )
+    return f"Use all resources at your disposal to answer the following question: {question}"
 
 
 question = make_question_prompt(
