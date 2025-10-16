@@ -1,5 +1,6 @@
 """
 This a multi-agent system for genomic analysis
+You can use it for a deep chat (memory)
 Author: Johannes Medagbe
 Copyright (c) 2025
 """
@@ -23,6 +24,7 @@ from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel
@@ -65,6 +67,7 @@ class GNAgent:
     sup_system_prompt2: Any
     plan_system_prompt: Any
     refl_system_prompt: Any
+    chat_id: str = "default"
     max_global_visits: int = 10  # max visits allowed in the global graph
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
@@ -136,7 +139,9 @@ class GNAgent:
                     chunk = chunks[i : i + chunk_size]
                     text = "".join(chunk)
                     formatted = last_content.format(text=text)
-                    naturalize_prompt["messages"] = self.naturalize_prompt["messages"][:-1] + [HumanMessage(formatted)]
+                    naturalize_prompt["messages"] = self.naturalize_prompt["messages"][
+                        :-1
+                    ] + [HumanMessage(formatted)]
                     response = generate(question=naturalize_prompt)
                     response = response.get("answer")
 
@@ -502,7 +507,7 @@ class GNAgent:
                 "end": END,
             },
         )
-        graph = graph_builder.compile()
+        graph = graph_builder.compile(checkpointer=MemorySaver())
 
         return graph
 
@@ -513,7 +518,8 @@ class GNAgent:
             "history": [],
             "next": "planner",
         }
-        result = await graph.ainvoke(initial_state)
+        thread = {"configurable": {"thread_id": self.chat_id}}
+        result = await graph.ainvoke(initial_state, thread)
 
         return result
 
