@@ -89,7 +89,8 @@ class GNAgent:
         self.chroma_db = self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
-                model_name=EMBED_MODEL, model_kwargs={"trust_remote_code": True}
+                model_name=EMBED_MODEL,
+                model_kwargs={"trust_remote_code": True, "device": "cpu"},
             ),
             db_path=self.db_path,
         )
@@ -152,7 +153,7 @@ class GNAgent:
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any: # reduced chunksize for memory management
+    ) -> Any:  # reduced chunksize for memory management
         logging.info("In set_chroma_db")
         if Path(db_path).exists():
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
