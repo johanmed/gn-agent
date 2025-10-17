@@ -18,9 +18,9 @@ db = Chroma(
 
 chunk_size = 1
 
-for i in tqdm(range(0, len(docs) + 1, chunk_size)):
+for i in tqdm(range(0, len(docs), chunk_size)):
     chunk = docs[i : i + chunk_size]
-    metadatas = [{"source": f"Document {ind}"} for ind in range(i, i + len(chunk))]
+    metadatas = [{"source": f"Document {ind+1}"} for ind in range(i, i + len(chunk))]
     db.add_texts(texts=chunk, metadatas=metadatas)
 
 db.persist()

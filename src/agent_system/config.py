@@ -13,7 +13,7 @@ from langchain_core.messages import BaseMessage
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 logging.basicConfig(
-    filename="log_langgraph.txt",
+    filename="log_agent.txt",
     filemode="w",
     level=logging.INFO,
     format="%(asctime)s %(message)s",
