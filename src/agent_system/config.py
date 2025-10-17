@@ -1,6 +1,6 @@
 """
 Setup and LLMs
-1. Embedding model = Alibaba-NLP/gte-multilingual-base
+1. Embedding model = Qwen/Qwen3-Embedding-0.6B
 2. Generative model = Qwen/Qwen2.5-3B-Instruct
 """
 
@@ -30,7 +30,7 @@ PCORPUS_PATH = "/home/johannesm/qtl_tmp/full_docs.txt"
 DB_PATH = "/home/johannesm/qtl_tmp/full_chroma_db"
 
 
-EMBED_MODEL = "Alibaba-NLP/gte-multilingual-base"
+EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 GENERATIVE_MODEL = dspy.LM(
     model="openai/Qwen/Qwen2.5-3B-Instruct",
