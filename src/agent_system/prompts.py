@@ -146,13 +146,12 @@ finalize_prompt = {
 
 sup_system_prompt1 = SystemMessage(
     """
-            You are a supervisor for a genomic analysis. You tasked with managing a conversation between the following workers: [researcher, planner, reflector]. Given the following user request, respond with the worker to act next. Each worker will perform a
-task and respond with their results. When finished, respond with end. """
+            You are a supervisor for a genomic analysis. You tasked with managing a conversation between the following workers: [researcher, planner, reflector]. Given the following user request, respond with the worker to act next. Each worker will perform a task and respond with their results. You must strictly follow the plan made by the planner to decide the next node. If you choose the researcher as the next node, make sure to pass to it only the next query according to the plan. Do not call it with the full plan. When finished, respond with end. """
 )
 
 sup_system_prompt2 = SystemMessage(
     """
-            Given the conversation above, who should act next? Or should we end? Select one of: [researcher, planner, reflector, end]. You must help in making progress for solving the task. Look at the history of steps taken so far below. Make sure to not repeat the same step consecutively."""
+            Given the conversation above, who should act next? Or should we end? Select one of: [researcher, planner, reflector, end]. The trick is to follow the instructions suggested by the planner. The researcher needs to be called with the next query and not the whole plan. You must help in making progress towards executing the plan accurately. Look at the history of steps taken so far below. Make sure to not repeat the same step consecutively."""
 )
 
 plan_system_prompt = SystemMessage(

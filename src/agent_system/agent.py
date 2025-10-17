@@ -49,6 +49,7 @@ class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages]
     next: Literal["researcher", "planner", "reflector", "end"]
     history: list
+    search: str
 
 
 @dataclass
@@ -430,8 +431,7 @@ class GNAgent:
     def researcher(self, state: AgentState) -> Any:
         logging.info("Researching")
         start = time.time()
-        input = state.messages[-1]
-        input = input.content
+        input = state.query
         logging.info(f"Input in researcher: {input}")
         result = self.manage_subtasks(input)
         end = time.time()
@@ -481,9 +481,11 @@ class GNAgent:
             return {"next": "end"}
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
-        result = result.get("next")
+        next = result.get("next")
+        search = result.get("search")
         return {
-            "next": result,
+            "next": next,
+            "search": search,
             "messages": state.messages,
             "history": state.history,
         }
@@ -518,6 +520,7 @@ class GNAgent:
             "messages": [("human", query)],
             "history": [],
             "next": "planner",
+            "search": "",
         }
         thread = {"configurable": {"thread_id": self.chat_id}}
         result = await graph.ainvoke(initial_state, thread)

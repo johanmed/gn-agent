@@ -53,7 +53,7 @@ class Subquery(dspy.Signature):
     query: str = dspy.InputField(desc="the query to address")
     answer: list = dspy.OutputField(desc="the answer to the query")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 50 words."
+        desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
 
 
@@ -67,8 +67,11 @@ class SupervisorDecision(dspy.Signature):
     next: Literal["researcher", "planner", "reflector", "end"] = dspy.OutputField(
         desc="the next step to take"
     )
+    search: str = dspy.OutputField(
+        desc="the next string to search according to the plan if the next step to take is researcher"
+    )
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 50 words."
+        desc="provide a concise explanation of the decision given the input, limited to approximately 50 words."
     )
 
 
@@ -81,7 +84,7 @@ class Process(dspy.Signature):
     )
     answer: str = dspy.OutputField(desc="the task result")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation for the input, limited to approximately 50 words."
+        desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
 
 
