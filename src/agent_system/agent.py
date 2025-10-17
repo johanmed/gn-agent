@@ -151,8 +151,8 @@ class GNAgent:
         return docs
 
     def set_chroma_db(
-        self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 500
-    ) -> Any:  # Big chunksize
+        self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
+    ) -> Any: # reduced chunksize for memory management
         logging.info("In set_chroma_db")
         if Path(db_path).exists():
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
