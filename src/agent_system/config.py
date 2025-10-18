@@ -38,7 +38,7 @@ GENERATIVE_MODEL = dspy.LM(
     api_key="local",
     model_type="chat",
     max_tokens=10_000,
-    n_ctx=80_000,
+    n_ctx=30_000,
     seed=2_025,
     temperature=0,
     verbose=False,
@@ -51,7 +51,9 @@ generate = dspy.ChainOfThought("question -> answer: str")
 
 class Subquery(dspy.Signature):
     query: str = dspy.InputField(desc="the task to solve")
-    answer: list = dspy.OutputField(desc="the smaller tasks that help solve the main task")
+    answer: list = dspy.OutputField(
+        desc="the smaller tasks that help solve the main task"
+    )
     reasoning: str = dspy.OutputField(
         desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )

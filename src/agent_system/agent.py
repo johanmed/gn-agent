@@ -49,6 +49,7 @@ class AgentState(BaseModel):
     messages: Annotated[list[BaseMessage], add_messages]
     next: Literal["researcher", "planner", "reflector", "end"]
 
+
 @dataclass
 class GNAgent:
     corpus_path: str
@@ -205,6 +206,8 @@ class GNAgent:
             else ""
         )
 
+        truncated_context=str(context)[:25_000] # prehandle context length of large documents given model limit of 32_000
+
         existing_history = (
             "\n".join(state.get("chat_history", []))
             if state.get("chat_history", [])
@@ -215,9 +218,11 @@ class GNAgent:
             analyze_prompt = self.analyze_prompt.copy()
             last_content = analyze_prompt["messages"][-1].content
             formatted = last_content.format(
-                context=context, existing_history=existing_history, input=state["input"]
+                context=truncated_context, existing_history=existing_history, input=state["input"]
             )
-            analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [HumanMessage(formatted)]
+            analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
@@ -244,7 +249,9 @@ class GNAgent:
             check_prompt = self.check_prompt.copy()
             last_content = check_prompt["messages"][-1].content
             formatted = last_content.format(answer=answer, input=state["input"])
-            check_prompt["messages"] = self.check_prompt["messages"][:-1] + [HumanMessage(formatted)]
+            check_prompt["messages"] = self.check_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             assessment = generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
@@ -283,7 +290,9 @@ class GNAgent:
             summarize_prompt = self.summarize_prompt.copy()
             last_content = summarize_prompt["messages"][-1].content
             formatted = last_content.format(full_context=full_context)
-            summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [HumanMessage(formatted)]
+            summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             summary = generate(question=summarize_prompt)
             summary = summary.get("answer")
 
@@ -303,7 +312,9 @@ class GNAgent:
                 formatted = last_content.format(
                     input=state["input"], updated_history=updated_history
                 )
-                synthesize_prompt["messages"] = self.synthesize_prompt["messages"][:-1] + [HumanMessage(formatted)]
+                synthesize_prompt["messages"] = self.synthesize_prompt["messages"][
+                    :-1
+                ] + [HumanMessage(formatted)]
                 result = generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
@@ -363,7 +374,9 @@ class GNAgent:
             split_prompt = self.split_prompt.copy()
             last_content = split_prompt["messages"][-1].content
             formatted = last_content.format(query=query)
-            split_prompt["messages"] = self.split_prompt["messages"][:-1] + [HumanMessage(formatted)]
+            split_prompt["messages"] = self.split_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             result = subquery(query=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
@@ -381,7 +394,9 @@ class GNAgent:
             formatted = last_content.format(
                 query=query, subqueries=subqueries, answers=answers
             )
-            finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [HumanMessage(formatted)]
+            finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
@@ -463,7 +478,10 @@ class GNAgent:
         result = tune(background=translated_messages)
         logging.info(f"Result in reflector: {result}")
         answer = result.get("answer")
-        answer = "Progress has been made. Use now all the resources to addess this new suggestion: " + answer
+        answer = (
+            "Progress has been made. Use now all the resources to addess this new suggestion: "
+            + answer
+        )
         return {
             "messages": [HumanMessage(answer)],
         }
@@ -475,14 +493,14 @@ class GNAgent:
             *state.messages,
             ("system", self.sup_system_prompt2),
         ]
-        
+
         if len(messages) > self.max_global_visits:
             return {"next": "end"}
-        
+
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
         next = result.get("next")
-        
+
         return {
             "next": next,
         }
