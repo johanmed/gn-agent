@@ -12,10 +12,10 @@ import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from copy import deepcopy
 from dataclasses import dataclass, field
 from glob import glob
 from pathlib import Path
-from threading import Lock
 from typing import Any, Literal
 
 from langchain.retrievers.ensemble import EnsembleRetriever
@@ -71,9 +71,7 @@ class GNAgent:
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    generative_lock: Lock = field(init=False, default_factory=Lock)
-    retriever_lock: Lock = field(init=False, default_factory=Lock)
-
+    
     def __post_init__(self):
 
         if not Path(self.pcorpus_path).exists():
@@ -96,7 +94,7 @@ class GNAgent:
 
         # Init'ing the ensemble retriever
         # Explain magic numbers and magic array
-        metadatas = [{"source": f"Document {ind}"} for ind in range(len(self.docs))]
+        metadatas = [{"source": f"Document {ind + 1}"} for ind in range(len(self.docs))]
         bm25_retriever = BM25Retriever.from_texts(
             texts=self.docs,
             metadatas=metadatas,
@@ -111,48 +109,50 @@ class GNAgent:
         )
 
     def corpus_to_docs(
-        self, corpus_path: str, chunk_size: int = 10
-    ) -> list:  # Small chunk size to prevent naturalization hallucinations
+        self, corpus_path: str, chunk_size: int = 100
+    ) -> list:  # big chunk_size allowed but parsimonily given preprocessing
         logging.info("In corpus_to_docs")
 
         # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
 
-        turtles = glob(f"{corpus_path}*.rdf")
-        g = Graph()
-        for turtle in turtles:
-            g.parse(turtle, format="ttl")
+        with open(f"{corpus_path}aggr_rdf.txt") as f:
+            aggr = f.read()
+            collection = json.loads(aggr)
 
         docs = []
+        chunks = []
 
-        for subject in tqdm(set(g.subjects())):
-            chunks = []
-            for predicate, obj in g.predicate_objects(subject):
-                text = f"\nSubject {subject} with predicate {predicate} has a value of {obj}"
+        for key in tqdm(collection):
+            logging.info(f"Key: {key}")
+            for value in collection[key]:
+                text = f"\n{key} : {value}"
                 chunks.append(text)
 
-            with self.generative_lock:
-                naturalize_prompt = self.naturalize_prompt.copy()
-                last_content = naturalize_prompt["messages"][-1].content
-                for i in range(0, len(chunks) + 1, chunk_size):
-                    chunk = chunks[i : i + chunk_size]
-                    text = "".join(chunk)
-                    formatted = last_content.format(text=text)
-                    naturalize_prompt["messages"] = self.naturalize_prompt["messages"][
-                        :-1
-                    ] + [HumanMessage(formatted)]
-                    response = generate(question=naturalize_prompt)
-                    response = response.get("answer")
+        prompts = []
+        last_content = deepcopy(self.naturalize_prompt)["messages"][-1].content
+        for i in range(0, len(chunks) +1 , chunk_size):
+            chunk = chunks[i : i + chunk_size]
+            text = "".join(chunk)
+            formatted = last_content.format(text=text)
+            prompt = deepcopy(self.naturalize_prompt)
+            prompt["messages"] = prompt["messages"][:-1] + [HumanMessage(formatted)]
+            prompts.append(prompt)
+        
+        def naturalize(data) -> str:
+            resp = generate(question=data)
+            return resp.get("answer")
 
-                    # logging.info(f"Documents: {response}")
-                    docs.append(response)
-
+        with ThreadPoolExecutor(max_workers=10) as ex: # Explain magic number
+            for answer in tqdm(ex.map(naturalize, prompts), total=len(prompts)):
+                docs.append(answer)
+        
         return docs
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any:  # reduced chunksize for memory management
+    ) -> Any:  # very small chunk_size for memory management
         logging.info("In set_chroma_db")
         if Path(db_path).exists():
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
@@ -165,7 +165,8 @@ class GNAgent:
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
                 metadatas = [
-                    {"source": f"Document {ind+1}"} for ind in range(i, i + len(chunk))
+                    {"source": f"Document {ind + 1}"}
+                    for ind in range(i, i + len(chunk))
                 ]
                 db.add_texts(
                     texts=chunk,
@@ -180,8 +181,7 @@ class GNAgent:
         # Retrieve documents
         logging.info("Retrieving")
 
-        with self.retriever_lock:
-            retrieved_docs = self.ensemble_retriever.invoke(state["input"])
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -206,7 +206,9 @@ class GNAgent:
             else ""
         )
 
-        truncated_context=str(context)[:25_000] # prehandle context length of large documents given model limit of 32_000
+        truncated_context = str(context)[
+            :25_000
+        ]  # prehandle context length of large documents given model limit of 32_000
 
         existing_history = (
             "\n".join(state.get("chat_history", []))
@@ -214,16 +216,17 @@ class GNAgent:
             else ""
         )
 
-        with self.generative_lock:
-            analyze_prompt = self.analyze_prompt.copy()
-            last_content = analyze_prompt["messages"][-1].content
-            formatted = last_content.format(
-                context=truncated_context, existing_history=existing_history, input=state["input"]
-            )
-            analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [
+        analyze_prompt = self.analyze_prompt.copy()
+        last_content = analyze_prompt["messages"][-1].content
+        formatted = last_content.format(
+            context=truncated_context,
+            existing_history=existing_history,
+            input=state["input"],
+        )
+        analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [
                 HumanMessage(formatted)
             ]
-            response = generate(question=analyze_prompt)
+        response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
 
@@ -245,14 +248,13 @@ class GNAgent:
 
         answer = state["answer"]
 
-        with self.generative_lock:
-            check_prompt = self.check_prompt.copy()
-            last_content = check_prompt["messages"][-1].content
-            formatted = last_content.format(answer=answer, input=state["input"])
-            check_prompt["messages"] = self.check_prompt["messages"][:-1] + [
+        check_prompt = self.check_prompt.copy()
+        last_content = check_prompt["messages"][-1].content
+        formatted = last_content.format(answer=answer, input=state["input"])
+        check_prompt["messages"] = self.check_prompt["messages"][:-1] + [
                 HumanMessage(formatted)
             ]
-            assessment = generate(question=check_prompt)
+        assessment = generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
         if "yes" in assessment.get("answer").lower():
@@ -286,15 +288,14 @@ class GNAgent:
             else current_interaction
         )
 
-        with self.generative_lock:
-            summarize_prompt = self.summarize_prompt.copy()
-            last_content = summarize_prompt["messages"][-1].content
-            formatted = last_content.format(full_context=full_context)
-            summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
+        summarize_prompt = self.summarize_prompt.copy()
+        last_content = summarize_prompt["messages"][-1].content
+        formatted = last_content.format(full_context=full_context)
+        summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
                 HumanMessage(formatted)
             ]
-            summary = generate(question=summarize_prompt)
-            summary = summary.get("answer")
+        summary = generate(question=summarize_prompt)
+        summary = summary.get("answer")
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
@@ -306,16 +307,15 @@ class GNAgent:
         if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
-            with self.generative_lock:
-                synthesize_prompt = self.synthesize_prompt.copy()
-                last_content = synthesize_prompt["messages"][-1].content
-                formatted = last_content.format(
+            synthesize_prompt = self.synthesize_prompt.copy()
+            last_content = synthesize_prompt["messages"][-1].content
+            formatted = last_content.format(
                     input=state["input"], updated_history=updated_history
                 )
-                synthesize_prompt["messages"] = self.synthesize_prompt["messages"][
+            synthesize_prompt["messages"] = self.synthesize_prompt["messages"][
                     :-1
                 ] + [HumanMessage(formatted)]
-                result = generate(question=synthesize_prompt)
+            result = generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
             result = result.get("answer")
@@ -370,14 +370,13 @@ class GNAgent:
 
         logging.info("Splitting query")
 
-        with self.generative_lock:
-            split_prompt = self.split_prompt.copy()
-            last_content = split_prompt["messages"][-1].content
-            formatted = last_content.format(query=query)
-            split_prompt["messages"] = self.split_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
-            ]
-            result = subquery(query=split_prompt)
+        split_prompt = self.split_prompt.copy()
+        last_content = split_prompt["messages"][-1].content
+        formatted = last_content.format(query=query)
+        split_prompt["messages"] = self.split_prompt["messages"][:-1] + [
+            HumanMessage(formatted)
+        ]
+        result = subquery(query=split_prompt)
 
         logging.info(f"Subqueries in split_query: {result}")
         result = result.get("answer")
@@ -388,16 +387,15 @@ class GNAgent:
 
         logging.info("Finalizing")
 
-        with self.generative_lock:
-            finalize_prompt = self.finalize_prompt.copy()
-            last_content = finalize_prompt["messages"][-1].content
-            formatted = last_content.format(
-                query=query, subqueries=subqueries, answers=answers
+        finalize_prompt = self.finalize_prompt.copy()
+        last_content = finalize_prompt["messages"][-1].content
+        formatted = last_content.format(
+            query=query, subqueries=subqueries, answers=answers
             )
-            finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [
+        finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [
                 HumanMessage(formatted)
             ]
-            result = generate(question=finalize_prompt)
+        result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
         result = result.get("answer")

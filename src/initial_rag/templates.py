@@ -1,4 +1,4 @@
-retriever_template = f"""
+retriever_template = """
 You are powerful data retriever and you strictly return what is asked for.
 
 Given the following conversation, generate a search query to retrieve relevant documents.
@@ -6,7 +6,7 @@ Conversation:
 {input}
 """
 
-rag_template = f"""
+rag_template = """
 <|im_start|>system
 You are a very skilled analyst that can answer concisely questions based on information you have.
 <|im_end|>
@@ -22,7 +22,7 @@ Answer:
 <|im_start|>assistant
 """
 
-summary_template = f"""
+summary_template = """
 <|system|>
 You are a powerful summary assistant. You do as much as you can and if cant take all information, you prioritize by order of importance.
 <|end|>

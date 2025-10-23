@@ -1,14 +1,16 @@
-from SPARQLWrapper import SPARQLWrapper
-from typing import Any
 import time
+from typing import Any
 
-TURTLE_DIR='/home/johannesm/corpus/'
+from SPARQLWrapper import SPARQLWrapper
+
+TURTLE_DIR = "/home/johannesm/all_corpus/"
+
 
 def endpoint_to_data(
-        limit: int,
-        offset: int,
-        sparql: Any = SPARQLWrapper("http://sparql-test.genenetwork.org/sparql/"),
-        ) -> Any:
+    limit: int,
+    offset: int,
+    sparql: Any = SPARQLWrapper("http://sparql-test.genenetwork.org/sparql/"),
+) -> Any:
     sparql.setQuery(
         f"""
         PREFIX dct: <http://purl.org/dc/terms/> 
@@ -26,17 +28,15 @@ def endpoint_to_data(
         PREFIX pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> 
 
         CONSTRUCT {{
-        ?trait ?property1 ?value_property1 .
-        ?snp ?property2 ?value_property2 .
+        ?traitid ?property1 ?value_property1 .
+        ?parent ?property2 ?value_property2 .
         }}
         WHERE {{
-        ?trait gnt:belongsToGroup gn:setBxd .
-        ?trait ?property1 ?value_property1 .
+        ?traitid gnt:traitId ?trait .
+        ?traitid ?property1 ?value_property1 .
         OPTIONAL {{
-        ?trait a gnt:mappedTrait . 
-        # make sure to get all SNPs for traits with related data, including lods
-        ?snp gnt:mappedSnp ?trait .
-        ?snp ?property2 ?value_property2 .
+        ?parent ?property ?traitid .
+        ?parent ?property2 ?value_property2 .
         }}
         }}
         OFFSET {offset}
@@ -46,35 +46,35 @@ def endpoint_to_data(
 
     return sparql.queryAndConvert()
 
+
 def data_to_file(
-        data: Any,
-        chunk_num: int,
-        base_path: str = 'rdf_data',
-        ) -> Any:
+    data: Any,
+    chunk_num: int,
+    base_path: str = "rdf_data",
+) -> Any:
     data.serialize(
-        destination=f'{TURTLE_DIR}{base_path}_chunk{chunk_num}.ttl',
-        format='turtle')
-    print(f'chunk {chunk_num}')
+        destination=f"{TURTLE_DIR}{base_path}_chunk{chunk_num}.ttl", format="turtle"
+    )
+    print(f"chunk {chunk_num}")
+
 
 def process(
-        limit: int = 5_000, # Explain magic number 5_000
-        offset: int = 0,
-        chunk_num: int = 0,
-        time_sleep: int = 5) -> Any: # Explain magic number 5
+    limit: int = 100_000,  # Explain magic number
+    offset: int = 0,
+    chunk_num: int = 1,
+    time_sleep: int = 5,
+) -> Any:  # Explain magic number
     while True:
-        data=endpoint_to_data(
-            limit=limit,
-            offset=offset)
-        if len(data)==0:
+        data = endpoint_to_data(limit=limit, offset=offset)
+        if len(data) == 0:
             break
-        data_to_file(
-            data=data,
-            chunk_num=chunk_num)
-        offset+=limit
-        chunk_num+=1
+        data_to_file(data=data, chunk_num=chunk_num)
+        offset += limit
+        chunk_num += 1
         time.sleep(time_sleep)
+
+
 try:
     process()
 except Exception as e:
     print(e)
-    

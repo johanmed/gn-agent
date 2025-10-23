@@ -3,5 +3,5 @@ def make_query_prompt(question: str) -> str:
 
 
 query = make_query_prompt(
-    question="Find all QTLs tagged 'new QTL' on chromosome 1. Given that QTL have long names starting with GEMMAMapped_LOCO_BXDPublish, extract names of matching QTLs. Identify markers they are associated to with a lod score > 4."
+    question="Select all QTLs tagged 'new QTL' on chromosome 1. Given that QTL have long names starting with GEMMAMapped_LOCO_BXDPublish, extract names of new QTLs. Identify markers on chromosome 1 associated with new QTL and having a lod score > 4."
 )

@@ -159,50 +159,34 @@ class GNQNA_RAG:
         if not Path(corpus_path).exists():
             sys.exit(1)
 
-        turtles = glob(f"{corpus_path}rdf_data*.ttl")
-        g = Graph()
-        for turtle in turtles:
-            g.parse(turtle, format="turtle")
+        with open(f"{corpus_path}aggr_rdf.txt") as f:
+            aggr = f.read()
+            collection = json.loads(aggr)
 
         docs = []
-        total = len(set(g.subjects))
 
-        for subject in set(g.subjects()):
-            text = f"{subject}:"
-            for predicate, obj in g.predicate_objects(subject):
-                text += f"{predicate}:{obj}\n"
+        for key in tqdm(collection):
+            for value in collection[key]:
+                text = f"\n{key} : {value}"
 
-            prompt = f"""
+                prompt = f"""
                 <|im_start|>system
                 You are extremely good at naturalizing RDF and inferring meaning
                 <|im_end|>
                 <|im_start|>user
-                Take following data and make it sound like Plain English.
-                You should return a coherent paragraph with clear sentences.
-                Data: "http://genenetwork.org/id/traitBxd_20537:\
-                http://purl.org/dc/terms/isReferencedBy: \
-                http://genenetwork.org/id/unpublished22893\n \
-                http://genenetwork.org/term/locus: \
-                http://genenetwork.org/id/Rsm10000002554"
-                <|im_end|>
-                <|im_start|>assistant
-                Result: "traitBxd_20537 is referenced by unpublished22893 \
-                and has been tested for Rsm10000002554"
-                <|im_end|>
-                <|im_start|>user
-                Take following RDF data andmake it sound like Plain English.
+                Take following RDF data and make it sound like Plain English.
                 You should return a coherent paragraph with clear sentences.
                 Data: {text}
                 <|im_start|>end
                 <|im_start|>assistant"""
 
-            response = GENERATIVE_MODEL.invoke(prompt)
-            print(f"Documents: {response}")
+                response = GENERATIVE_MODEL.invoke(prompt)
+                # print(f"Documents: {response}")
 
-            docs.append(response)
+                docs.append(response)
 
-            if len(docs) >= int(total / 1_000):
-                break
+                if len(docs) >= int(total / 1_000):
+                    break
 
         end = time.time()
         print(f"corpus_to_docs: {end-start}")
