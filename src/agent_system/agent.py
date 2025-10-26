@@ -1,6 +1,8 @@
 """
-This a multi-agent system for genomic analysis
-You can use it for a deep chat (memory)
+Multi-agent system for GeneNetwork
+This is the main module of the package
+It supports in RAM memory for repetitive and prolonged interactions
+To run: `python agent.py`
 Author: Johannes Medagbe
 Copyright (c) 2025
 """
@@ -34,24 +36,45 @@ from typing_extensions import Annotated, TypedDict
 
 from config import *
 from prompts import *
-from question import query
+from query import query
 
+class AgentState(BaseModel):
+    """
+    Represents agent state
+    Avails 02 attributes to allow communication between agents
+    """
+    messages: Annotated[list[BaseMessage], add_messages]
+    next: Literal["researcher", "planner", "reflector", "end"]
 
-class State(TypedDict):
+class SubagentState(TypedDict):
+    """
+    Represents state of subcomponents of the agent researcher
+    Avails 05 attributes to allow communication between its subcomponents
+    """
     input: str
     chat_history: list[str]
     context: list[str]
     answer: str
     should_continue: str
 
-
-class AgentState(BaseModel):
-    messages: Annotated[list[BaseMessage], add_messages]
-    next: Literal["researcher", "planner", "reflector", "end"]
-
-
 @dataclass
 class GNAgent:
+    """
+    Represents GeneNetwork Agent
+    Encapsulates all functionalities of the system
+    Takes:
+         Paths of corpuses and database
+         All actors prompts
+         Default parameters:
+             chat_id: identifier of conversation thread
+             max_global_visits: maximum number of redirections allowed to prevent infinite looping
+    Executes operations:
+         Document processing (including naturalization) if not yet done
+         Document embedding and database creation if not yet done
+         Initialization of multi-agent graph
+         Initialization of subagent graph for researcher agent
+         Run of query through system
+    """
     corpus_path: str
     pcorpus_path: str
     db_path: str
@@ -74,52 +97,63 @@ class GNAgent:
     
     def __post_init__(self):
 
-        if not Path(self.pcorpus_path).exists():
+        # Process or load documents
+        if not Path(self.pcorpus_path).exists(): # first time execution
             self.docs = self.corpus_to_docs(self.corpus_path)
             with open(self.pcorpus_path, "w") as file:
                 file.write(json.dumps(self.docs))
-        else:
+        else: # subsequent executions
             with open(self.pcorpus_path) as file:
                 data = file.read()
                 self.docs = json.loads(data)
 
+        # Create or get embedding database
         self.chroma_db = self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
                 model_kwargs={"trust_remote_code": True, "device": "cpu"},
-            ),
+            ), # could use gpu instead of cpu with more RAM
             db_path=self.db_path,
         )
 
-        # Init'ing the ensemble retriever
-        # Explain magic numbers and magic array
+        # Init the ensemble retriever
         metadatas = [{"source": f"Document {ind + 1}"} for ind in range(len(self.docs))]
         bm25_retriever = BM25Retriever.from_texts(
             texts=self.docs,
             metadatas=metadatas,
-            k=10,
+            k=10, # might need finetuning
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.chroma_db.as_retriever(search_kwargs={"k": 10}),
+                self.chroma_db.as_retriever(search_kwargs={"k": 10}), # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.4, 0.6],
+            weights=[0.4, 0.6], # might need finetuning
         )
 
     def corpus_to_docs(
         self, corpus_path: str, chunk_size: int = 100
-    ) -> list:  # big chunk_size allowed but parsimonily given preprocessing
+    ) -> list: # big chunk_size allowed but use parsimonily for preprocessing
+        """Extracts documents from file and performs processing
+
+        Args:
+            corpus_path: path to directory containing corpus
+            chunk_size: minimal number of documents by iteration
+
+        Returns:
+            processed document chunks
+        """
+        
         logging.info("In corpus_to_docs")
 
-        # Check for corpus. Exit if no corpus.
         if not Path(corpus_path).exists():
             sys.exit(1)
 
+        # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
             aggr = f.read()
-            collection = json.loads(aggr)
+            collection = json.loads(aggr) # dictionary with key being RDF subject
 
         docs = []
         chunks = []
@@ -140,7 +174,16 @@ class GNAgent:
             prompt["messages"] = prompt["messages"][:-1] + [HumanMessage(formatted)]
             prompts.append(prompt)
         
-        def naturalize(data) -> str:
+        def naturalize(data: str) -> str:
+            """Naturalizes RDF data
+
+            Args:
+                data: RDF triples
+
+            Returns:
+                logic text capturing RDF meaning
+            """
+            
             resp = generate(question=data)
             return resp.get("answer")
 
@@ -152,8 +195,21 @@ class GNAgent:
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any:  # very small chunk_size for memory management
+    ) -> Any: # very small chunk_size for memory management
+        """Initializes or reads embedding database
+
+        Args:
+            docs: processed document chunks
+            embed_model: model for embedding
+            db_path: path to database
+            chunk_size: number of chunks to process by iteration
+
+        Returns:
+            database object for embedding
+        """
+
         logging.info("In set_chroma_db")
+
         if Path(db_path).exists():
             db = Chroma(persist_directory=db_path, embedding_function=embed_model)
             return db
@@ -176,9 +232,16 @@ class GNAgent:
             db.persist()
             return db
 
-    def retrieve(self, state: State) -> dict:
+    def retrieve(self, state: SubagentState) -> dict:
+        """Retrieves relevant documents to a query
 
-        # Retrieve documents
+        Args:
+            state: node state
+
+        Returns:
+            node state updated with retrieved documents
+        """
+        
         logging.info("Retrieving")
 
         retrieved_docs = self.ensemble_retriever.invoke(state["input"])
@@ -195,9 +258,16 @@ class GNAgent:
             "answer": state.get("answer", ""),
         }
 
-    def analyze(self, state: State) -> dict:
+    def analyze(self, state: SubagentState) -> dict:
+        """Addresses a query based on retrieved documents
 
-        # Analyze documents
+        Args:
+            state: node state
+
+        Returns:
+            node state updated with answer
+        """
+
         logging.info("Analysing")
 
         context = (
@@ -241,9 +311,16 @@ class GNAgent:
             "chat_history": state.get("chat_history", []),
         }
 
-    def check_relevance(self, state: State) -> dict:
+    def check_relevance(self, state: SubagentState) -> dict:
+        """Checks relevance of answer to query
 
-        # Check relevance of retrieved data
+        Args:
+            state: node state
+
+        Returns:
+            node state updated with relevance status
+        """
+        
         logging.info("Checking relevance")
 
         answer = state["answer"]
@@ -272,9 +349,16 @@ class GNAgent:
             "should_continue": should_continue,
         }
 
-    def summarize(self, state: State) -> dict:
+    def summarize(self, state: SubagentState) -> dict:
+        """Summarizes data in node
 
-        # Summarize
+        Args:
+            state: node state
+
+        Returns:
+            summarized answer
+        """
+        
         logging.info("Summarizing")
 
         existing_history = state.get("chat_history", [])
@@ -334,7 +418,7 @@ class GNAgent:
         }
 
     def initialize_subgraph(self) -> Any:
-        graph_builder = StateGraph(State)
+        graph_builder = StateGraph(SubagentState)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
@@ -359,7 +443,7 @@ class GNAgent:
             "chat_history": [],
             "context": [],
             "answer": "",
-            "should_continue": "retrieve",
+            "should_continue": "retrieve", # always retrieve first
         }
 
         result = await subgraph.ainvoke(initial_state)
@@ -384,7 +468,17 @@ class GNAgent:
         return result
 
     def finalize(self, query: str, subqueries: list[str], answers: list[str]) -> dict:
+        """Combines results of subqueries
 
+        Args:
+            query: original query
+            subqueries: smaller queries
+            answers: answers to smaller queries
+
+        Returns:
+            consensus result
+        """
+        
         logging.info("Finalizing")
 
         finalize_prompt = self.finalize_prompt.copy()
@@ -409,13 +503,20 @@ class GNAgent:
         return final_answer
 
     def run_subtask(self, subquery: str) -> dict:
-        # Run specific task
+        # Handle a subquery
         result = asyncio.run(self.invoke_subgraph(subquery))
         return result
 
     def manage_subtasks(self, query: str) -> dict:
+        """Handles a query by decomposing it into smaller queries and
+        answering them
 
-        # Manage multiple calls or subqueries
+        Args:
+            query: original query
+
+        Returns:
+            final answer
+        """
 
         subqueries = self.split_query(query)
 
@@ -439,6 +540,15 @@ class GNAgent:
         return concatenated_answer
 
     def researcher(self, state: AgentState) -> Any:
+        """Researches a query
+
+        Args:
+            state: agent state containing query
+
+        Returns:
+            agent state updated with result
+        """
+        
         logging.info("Researching")
         start = time.time()
         if len(state.messages) < 3:
@@ -456,6 +566,15 @@ class GNAgent:
         }
 
     def planner(self, state: AgentState) -> Any:
+        """Plans steps to tackle a problem
+
+        Args:
+            state: agent state specifying problem
+
+        Returns:
+            agent state updated with plan
+        """
+        
         logging.info("Planning")
         input = [self.plan_system_prompt] + state.messages
         logging.info(f"Input in planner: {input}")
@@ -467,6 +586,15 @@ class GNAgent:
         }
 
     def reflector(self, state: AgentState) -> Any:
+        """Reflects about progress
+
+        Args:
+            state: agent state with current progress
+
+        Returns:
+            agent state updated with suggestions
+        """
+        
         logging.info("Reflecting")
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
         translated_messages = [self.refl_system_prompt, state.messages[0]] + [
@@ -485,6 +613,15 @@ class GNAgent:
         }
 
     def supervisor(self, state: AgentState) -> Any:
+        """Manages interactions between other agents in system
+
+        Args:
+            state: agent state with relevant data
+
+        Returns:
+            agent state updated with next agent to call
+        """
+        
         logging.info("Supervising")
         messages = [
             ("system", self.sup_system_prompt1),
@@ -530,14 +667,15 @@ class GNAgent:
         graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": "planner",
+            "next": "planner", # always plan first
         }
-        thread = {"configurable": {"thread_id": self.chat_id}}
+        thread = {"configurable": {"thread_id": self.chat_id}} # conversation thread
         result = await graph.ainvoke(initial_state, thread)
 
         return result
 
     async def handler(self, query: str) -> Any:
+        # Main question handler of the system
         global_result = await self.invoke_globgraph(query)
         finalize_prompt = self.finalize_prompt
         finalize_prompt = finalize_prompt["messages"][0] + global_result.get("messages")

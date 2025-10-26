@@ -1,7 +1,0 @@
-def make_query_prompt(question: str) -> str:
-    return f"Use all resources at your disposal to answer the following question: {question}"
-
-
-query = make_query_prompt(
-    question="Select all QTLs tagged 'new QTL' on chromosome 1. Given that QTL have long names starting with GEMMAMapped_LOCO_BXDPublish, extract names of new QTLs. Identify markers on chromosome 1 associated with new QTL and having a lod score > 4."
-)

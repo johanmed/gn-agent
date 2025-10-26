@@ -1,3 +1,5 @@
+# This module instantiates all prompts
+
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 naturalize_prompt = {
