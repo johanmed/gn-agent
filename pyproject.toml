@@ -1,0 +1,28 @@
+[project]
+name = "gnagent"
+version = "0.1.0"
+description = "Agentic system for GeneNetwork research"
+authors = [
+    {name = "Johannes Medagbe",email = "johanmedagbe@gmail.com"}
+]
+license = {text = "MIT"}
+readme = "README.md"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "langchain (>=1.0.2,<2.0.0)",
+    "langchain-community (>=0.4,<0.5)",
+    "langchain-core (>=1.0.1,<2.0.0)",
+    "langgraph (>=1.0.1,<2.0.0)",
+    "pydantic (>=2.12.3,<3.0.0)",
+    "rdflib (>=7.3.0,<8.0.0)",
+    "tqdm (>=4.67.1,<5.0.0)",
+    "typing-extensions (>=4.15.0,<5.0.0)",
+    "dspy (>=3.0.3,<4.0.0)",
+    "sglang[all] (>=0.5.4.post1,<0.6.0)",
+    "flashinfer-python @ git+https://github.com/flashinfer-ai/flashinfer.git"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
