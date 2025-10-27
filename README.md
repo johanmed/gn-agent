@@ -33,7 +33,7 @@ eval $(poetry env activate)
 
 4. Navigate to source code
 ```bash
-cd src/agent_system/
+cd src/
 ```
 
 5. Run the system
