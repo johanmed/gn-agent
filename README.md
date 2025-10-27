@@ -1,20 +1,51 @@
-# gn-rag
-gn-rag is a rag system designed for genenetwork. 
-Work still in progress.
+# GNAgent
 
 ## Description
-gn-rag aims at improving search and large-scale data analysis in genenetwork using LLMs capabilities. 
-The system uses:
-1. A large generative model for question-answering
-2. An embedding model and BM25 algorithm for document search and retrieval
-3. A small generative model for conversation summarization
 
-## Set up
-You will need a Python environment with a number of dependencies to run this project. Tools required include:
-- langchain
-- langgraph
-- llama-cpp-python
-- chroma-db
-- sparqlwrapper
+**GNAgent** is an agentic system designed for [GeneNetwork](https://genenetwork.org/). It leverages reasoning abilities of Large Language Models (LLMs) to autonomously handle genomic tasks complex for humans. 
 
-You dont need to install them one by one. Create your own Python environment and do `pip install -r requirements.txt`
+## Design
+
+**GNAgent** combines 04 agents to provide insights into genomics of model organisms:
+- *Supervisor*: digests task, delegates responsibilities to specialized agents and manages interaction between them
+- *Planner*: plans series of steps to take to solve the task at hand
+- *Reflector*: improves reasoning by providing thoughtful suggestions and critiques
+- *Researcher*: extracts knowledge and addresses queries using a RAG architecture
+
+## Configuration
+
+All functionalities of **GNAgent** have been packaged for seamless experimentation and use. To get started, take the following steps:
+
+1. Clone the repository
+```bash
+git clone https://github.com/johanmed/gn-agent.git
+```
+
+2. Install all dependencies
+```bash
+poetry install
+```
+
+3. Activate virtual environment
+```bash
+eval $(poetry env activate)
+```
+
+4. Navigate to source code
+```bash
+cd src/agent_system/
+```
+
+5. Run the system
+```bash
+python3 agent.py
+```
+You could also start a Python session for prolonged discussion
+```python
+from agent import *
+```
+
+## Useful considerations
+- This project is still under development. We are actively chasing bugs :)
+- We support [DSpy](https://dspy.ai/) for portability, reliability and optimization. You can switch to any models including proprietary models.
+- Be sure to not modify the files `pyproject.toml` and `poetry.lock`
