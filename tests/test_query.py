@@ -5,8 +5,7 @@ This script tests query passed to system
 import os
 import sys
 
-module_dir = os.path.abspath("../src/agent/")
-sys.path.append(module_dir)
+sys.path.append(os.path.abspath("../src/agent/"))
 
 from query import make_query_prompt
 
