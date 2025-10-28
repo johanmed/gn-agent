@@ -27,7 +27,7 @@ class Response(BaseModel):
 gnagent = FastAPI(
     title="FASTAPI endpoint for GNAgent",
     description="Abstract the process of solving a genomic problem with GNAgent",
-    version="1.0.0",
+    version="0.1.0",
 )
 
 
