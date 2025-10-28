@@ -684,7 +684,7 @@ class GNAgent:
         return end_result
 
 
-async def main():
+async def main(query: str):
     agent = GNAgent(
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
@@ -707,4 +707,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main(query))

@@ -5,7 +5,7 @@ This script tests the system configurations
 import os
 import sys
 
-module_dir = os.path.abspath("../src/agent_system/")
+module_dir = os.path.abspath("../src/agent/")
 sys.path.append(module_dir)
 
 from config import generate
