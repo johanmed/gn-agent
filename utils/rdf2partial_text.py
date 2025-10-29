@@ -53,7 +53,7 @@ for file in files:
                             if "/" in content
                             else clean(content.split(":")[-1])
                         )
-                        for content in contents[1:]
+                        for content in contents
                     )
                     key = clean(key)
                     value = clean(value)
