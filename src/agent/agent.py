@@ -133,8 +133,10 @@ class GNAgent:
         )
 
     def corpus_to_docs(
-        self, corpus_path: str, chunk_size: int = 100
-    ) -> list: # big chunk_size allowed but use parsimonily for preprocessing
+        self, corpus_path: str,
+        chunk_size: int = 100 # big chunk_size allowed but use parsimonily for preprocessing,
+        make_natural : bool = False,
+    ) -> list:
         """Extracts documents from file and performs processing
 
         Args:
@@ -160,8 +162,11 @@ class GNAgent:
 
         for key in tqdm(collection):
             for value in collection[key]:
-                text = f"\n{key} : {value}"
+                text = f"{key} is/has {value}"
                 chunks.append(text)
+
+        if make_natural = False:
+            return chunks
 
         prompts = []
         last_content = deepcopy(self.naturalize_prompt)["messages"][-1].content
@@ -189,6 +194,7 @@ class GNAgent:
         with ThreadPoolExecutor(max_workers=100) as ex: # Explain magic number
             for answer in tqdm(ex.map(naturalize, prompts), total=len(prompts)):
                 docs.append(answer)
+            # Save on disk for quick turnaround
             with open(f"{corpus_path}proc_aggr_rdf.txt", "w") as f:
                 f.write(json.dumps(docs))
                 
