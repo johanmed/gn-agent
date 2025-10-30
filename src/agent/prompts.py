@@ -12,8 +12,8 @@ naturalize_prompt = {
         HumanMessage(
             """
             Take this new RDF data and make it sound like Plain English.
-            Use the subject, predicate and object to build sentences. You can later link sentences to form paragraphs.
-            You should return a coherent paragraph.
+            If you could chop long names to only meaningful parts, that would great. Remember the focus is on traits and genomic markers.
+            You should return a coherent sentence.
             New RDF data: {text}
             Result:"""
         ),

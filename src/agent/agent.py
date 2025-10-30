@@ -143,7 +143,7 @@ class GNAgent:
     def corpus_to_docs(
         self,
         corpus_path: str,
-        chunk_size: int = 100,  # big chunk_size allowed but use parsimonily for preprocessing
+        chunk_size: int = 1, # small chunk size to match embedding chunks
         make_natural: bool = False,
     ) -> list:
         """Extracts documents from file and performs processing
@@ -211,7 +211,7 @@ class GNAgent:
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any:  # very small chunk_size for memory management
+    ) -> Any:  # small chunk_size for atomicity and memory management
         """Initializes or reads embedding database
 
         Args:
