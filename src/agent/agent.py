@@ -137,7 +137,7 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.4, 0.6],  # might need finetuning
+            weights=[0.7, 0.3],  # might need finetuning
         )
 
     def corpus_to_docs(
