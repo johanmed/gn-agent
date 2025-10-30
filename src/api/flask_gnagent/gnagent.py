@@ -8,10 +8,7 @@ import sys
 
 from flask import Blueprint, jsonify, request
 
-AGENT_PATH = "../../agent/"
-sys.path.append(os.path.abspath(AGENT_PATH))
-
-from agent import main
+from src.agent.agent import main
 
 gnagent = Blueprint("gnagent", __name__)
 
