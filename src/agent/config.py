@@ -12,7 +12,6 @@ import warnings
 from typing import Literal
 
 import dspy
-from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -34,16 +33,12 @@ DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
-load_dotenv()
-
-API_KEY = os.getenv("API_KEY")
+API_KEY = os.getenv("API_KEY").strip()
 
 GENERATIVE_MODEL = dspy.LM(
-    model="anthropic/claude-haiku-4-5-20251001",
+    "anthropic/claude-haiku-4-5-20251001",
     api_key=API_KEY,
-    model_type="chat",
     max_tokens=10_000,
-    n_ctx=30_000,
     temperature=0,
     verbose=False,
 )
