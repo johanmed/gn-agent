@@ -7,10 +7,12 @@ Note: Need to customize paths
 """
 
 import logging
+import os
 import warnings
 from typing import Literal
 
 import dspy
+from dotenv import load_dotenv
 from langchain_core.messages import BaseMessage
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -28,18 +30,20 @@ CORPUS_PATH = "/home/johannesm/all_corpus/"
 PCORPUS_PATH = "/home/johannesm/all_tmp/new_docs.txt"
 
 # TODO: Customize path
-DB_PATH = "/home/johannesm/all_tmp/new_chroma_db"
+DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
+load_dotenv()
+
+API_KEY = os.getenv("API_KEY")
+
 GENERATIVE_MODEL = dspy.LM(
-    model="openai/Qwen/Qwen2.5-7B-Instruct",  # should match shell config
-    api_base="http://localhost:7501/v1",
-    api_key="local",
+    model="anthropic/claude-haiku-4-5-20251001",
+    api_key=API_KEY,
     model_type="chat",
     max_tokens=10_000,
     n_ctx=30_000,
-    seed=2_025,
     temperature=0,
     verbose=False,
 )
