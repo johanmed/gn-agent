@@ -152,21 +152,20 @@ class GNAgent:
 
         # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
-            aggr = f.read()
-            collection = json.loads(aggr) # dictionary with key being RDF subject
+            aggregated = f.read()
+            collection = json.loads(aggregated) # dictionary with key being RDF subject
 
         docs = []
         chunks = []
 
         for key in tqdm(collection):
-            logging.info(f"Key: {key}")
             for value in collection[key]:
                 text = f"\n{key} : {value}"
                 chunks.append(text)
 
         prompts = []
         last_content = deepcopy(self.naturalize_prompt)["messages"][-1].content
-        for i in range(0, len(chunks) +1 , chunk_size):
+        for i in range(0, len(chunks) + 1 , chunk_size):
             chunk = chunks[i : i + chunk_size]
             text = "".join(chunk)
             formatted = last_content.format(text=text)
@@ -184,13 +183,15 @@ class GNAgent:
                 logic text capturing RDF meaning
             """
             
-            resp = generate(question=data)
-            return resp.get("answer")
+            response = generate(question=data)
+            return response.get("answer")
 
-        with ThreadPoolExecutor(max_workers=10) as ex: # Explain magic number
+        with ThreadPoolExecutor(max_workers=100) as ex: # Explain magic number
             for answer in tqdm(ex.map(naturalize, prompts), total=len(prompts)):
                 docs.append(answer)
-        
+            with open(f"{corpus_path}proc_aggr_rdf.txt", "w") as f:
+                f.write(json.dumps(docs))
+                
         return docs
 
     def set_chroma_db(
