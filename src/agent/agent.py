@@ -143,7 +143,7 @@ class GNAgent:
     def corpus_to_docs(
         self,
         corpus_path: str,
-        chunk_size: int = 1,  # small chunk size to match embedding chunks
+        chunk_size: int = 1, # small chunk size to match embedding chunks
         make_natural: bool = False,
     ) -> list:
         """Extracts documents from file and performs processing

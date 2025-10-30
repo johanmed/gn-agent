@@ -6,8 +6,7 @@ def make_query_prompt(query: str) -> str:
         f"Use all resources at your disposal to answer the following question: {query}"
     )
 
-
-# question = input("We are ready for you. Please ask your question: ")
-question = "Identify traits with lod score > 4 for marker Rsm10000001197. Extract description of those traits."
+#question = input("We are ready for you. Please ask your question: ")
+question = "Identify pairs of traits and markers with lod score > 4. Extract descriptions of traits."
 
 query = make_query_prompt(query=question)
