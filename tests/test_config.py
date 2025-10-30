@@ -5,9 +5,7 @@ This script tests the system configurations
 import os
 import sys
 
-sys.path.append(os.path.abspath("../src/agent/"))
-
-from config import generate
+from src.agent.config import generate
 
 
 def test_generate():

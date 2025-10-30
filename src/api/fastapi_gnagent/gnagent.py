@@ -10,9 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-sys.path.append(os.path.abspath("../../agent/"))
-
-from agent import main
+from src.agent.agent import main
 
 
 class Request(BaseModel):

@@ -5,9 +5,7 @@ This script tests query passed to system
 import os
 import sys
 
-sys.path.append(os.path.abspath("../src/agent/"))
-
-from query import make_query_prompt
+from src.agent.query import make_query_prompt
 
 
 def test_query():
