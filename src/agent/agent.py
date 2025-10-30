@@ -38,24 +38,29 @@ from config import *
 from prompts import *
 from query import query
 
+
 class AgentState(BaseModel):
     """
     Represents agent state
     Avails 02 attributes to allow communication between agents
     """
+
     messages: Annotated[list[BaseMessage], add_messages]
     next: Literal["researcher", "planner", "reflector", "end"]
+
 
 class SubagentState(TypedDict):
     """
     Represents state of subcomponents of the agent researcher
     Avails 05 attributes to allow communication between its subcomponents
     """
+
     input: str
     chat_history: list[str]
     context: list[str]
     answer: str
     should_continue: str
+
 
 @dataclass
 class GNAgent:
@@ -75,6 +80,7 @@ class GNAgent:
          Initialization of subagent graph for researcher agent
          Run of query through system
     """
+
     corpus_path: str
     pcorpus_path: str
     db_path: str
@@ -94,15 +100,15 @@ class GNAgent:
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    
+
     def __post_init__(self):
 
         # Process or load documents
-        if not Path(self.pcorpus_path).exists(): # first time execution
+        if not Path(self.pcorpus_path).exists():  # first time execution
             self.docs = self.corpus_to_docs(self.corpus_path)
             with open(self.pcorpus_path, "w") as file:
                 file.write(json.dumps(self.docs))
-        else: # subsequent executions
+        else:  # subsequent executions
             with open(self.pcorpus_path) as file:
                 data = file.read()
                 self.docs = json.loads(data)
@@ -113,7 +119,7 @@ class GNAgent:
             embed_model=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
                 model_kwargs={"trust_remote_code": True, "device": "cpu"},
-            ), # could use gpu instead of cpu with more RAM
+            ),  # could use gpu instead of cpu with more RAM
             db_path=self.db_path,
         )
 
@@ -122,20 +128,23 @@ class GNAgent:
         bm25_retriever = BM25Retriever.from_texts(
             texts=self.docs,
             metadatas=metadatas,
-            k=10, # might need finetuning
+            k=10,  # might need finetuning
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.chroma_db.as_retriever(search_kwargs={"k": 10}), # might need finetuning
+                self.chroma_db.as_retriever(
+                    search_kwargs={"k": 10}
+                ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.4, 0.6], # might need finetuning
+            weights=[0.4, 0.6],  # might need finetuning
         )
 
     def corpus_to_docs(
-        self, corpus_path: str,
-        chunk_size: int = 100 # big chunk_size allowed but use parsimonily for preprocessing,
-        make_natural : bool = False,
+        self,
+        corpus_path: str,
+        chunk_size: int = 100,  # big chunk_size allowed but use parsimonily for preprocessing
+        make_natural: bool = False,
     ) -> list:
         """Extracts documents from file and performs processing
 
@@ -146,7 +155,7 @@ class GNAgent:
         Returns:
             processed document chunks
         """
-        
+
         logging.info("In corpus_to_docs")
 
         if not Path(corpus_path).exists():
@@ -155,7 +164,7 @@ class GNAgent:
         # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
             aggregated = f.read()
-            collection = json.loads(aggregated) # dictionary with key being RDF subject
+            collection = json.loads(aggregated)  # dictionary with key being RDF subject
 
         docs = []
         chunks = []
@@ -165,19 +174,19 @@ class GNAgent:
                 text = f"{key} is/has {value}"
                 chunks.append(text)
 
-        if make_natural = False:
+        if make_natural == False:
             return chunks
 
         prompts = []
         last_content = deepcopy(self.naturalize_prompt)["messages"][-1].content
-        for i in range(0, len(chunks) + 1 , chunk_size):
+        for i in range(0, len(chunks) + 1, chunk_size):
             chunk = chunks[i : i + chunk_size]
             text = "".join(chunk)
             formatted = last_content.format(text=text)
             prompt = deepcopy(self.naturalize_prompt)
             prompt["messages"] = prompt["messages"][:-1] + [HumanMessage(formatted)]
             prompts.append(prompt)
-        
+
         def naturalize(data: str) -> str:
             """Naturalizes RDF data
 
@@ -187,22 +196,22 @@ class GNAgent:
             Returns:
                 logic text capturing RDF meaning
             """
-            
+
             response = generate(question=data)
             return response.get("answer")
 
-        with ThreadPoolExecutor(max_workers=100) as ex: # Explain magic number
+        with ThreadPoolExecutor(max_workers=100) as ex:  # Explain magic number
             for answer in tqdm(ex.map(naturalize, prompts), total=len(prompts)):
                 docs.append(answer)
             # Save on disk for quick turnaround
             with open(f"{corpus_path}proc_aggr_rdf.txt", "w") as f:
                 f.write(json.dumps(docs))
-                
+
         return docs
 
     def set_chroma_db(
         self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
-    ) -> Any: # very small chunk_size for memory management
+    ) -> Any:  # very small chunk_size for memory management
         """Initializes or reads embedding database
 
         Args:
@@ -248,7 +257,7 @@ class GNAgent:
         Returns:
             node state updated with retrieved documents
         """
-        
+
         logging.info("Retrieving")
 
         retrieved_docs = self.ensemble_retriever.invoke(state["input"])
@@ -301,8 +310,8 @@ class GNAgent:
             input=state["input"],
         )
         analyze_prompt["messages"] = self.analyze_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
-            ]
+            HumanMessage(formatted)
+        ]
         response = generate(question=analyze_prompt)
 
         logging.info(f"Response in analyze: {response}")
@@ -327,7 +336,7 @@ class GNAgent:
         Returns:
             node state updated with relevance status
         """
-        
+
         logging.info("Checking relevance")
 
         answer = state["answer"]
@@ -336,8 +345,8 @@ class GNAgent:
         last_content = check_prompt["messages"][-1].content
         formatted = last_content.format(answer=answer, input=state["input"])
         check_prompt["messages"] = self.check_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
-            ]
+            HumanMessage(formatted)
+        ]
         assessment = generate(question=check_prompt)
         logging.info(f"Assessment in checking relevance: {assessment}")
 
@@ -365,7 +374,7 @@ class GNAgent:
         Returns:
             summarized answer
         """
-        
+
         logging.info("Summarizing")
 
         existing_history = state.get("chat_history", [])
@@ -383,8 +392,8 @@ class GNAgent:
         last_content = summarize_prompt["messages"][-1].content
         formatted = last_content.format(full_context=full_context)
         summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
-            ]
+            HumanMessage(formatted)
+        ]
         summary = generate(question=summarize_prompt)
         summary = summary.get("answer")
 
@@ -401,11 +410,11 @@ class GNAgent:
             synthesize_prompt = self.synthesize_prompt.copy()
             last_content = synthesize_prompt["messages"][-1].content
             formatted = last_content.format(
-                    input=state["input"], updated_history=updated_history
-                )
-            synthesize_prompt["messages"] = self.synthesize_prompt["messages"][
-                    :-1
-                ] + [HumanMessage(formatted)]
+                input=state["input"], updated_history=updated_history
+            )
+            synthesize_prompt["messages"] = self.synthesize_prompt["messages"][:-1] + [
+                HumanMessage(formatted)
+            ]
             result = generate(question=synthesize_prompt)
             logging.info(f"Result in summarize: {result}")
 
@@ -450,7 +459,7 @@ class GNAgent:
             "chat_history": [],
             "context": [],
             "answer": "",
-            "should_continue": "retrieve", # always retrieve first
+            "should_continue": "retrieve",  # always retrieve first
         }
 
         result = await subgraph.ainvoke(initial_state)
@@ -485,17 +494,17 @@ class GNAgent:
         Returns:
             consensus result
         """
-        
+
         logging.info("Finalizing")
 
         finalize_prompt = self.finalize_prompt.copy()
         last_content = finalize_prompt["messages"][-1].content
         formatted = last_content.format(
             query=query, subqueries=subqueries, answers=answers
-            )
+        )
         finalize_prompt["messages"] = self.finalize_prompt["messages"][:-1] + [
-                HumanMessage(formatted)
-            ]
+            HumanMessage(formatted)
+        ]
         result = generate(question=finalize_prompt)
 
         logging.info(f"Result in finalize: {result}")
@@ -555,7 +564,7 @@ class GNAgent:
         Returns:
             agent state updated with result
         """
-        
+
         logging.info("Researching")
         start = time.time()
         if len(state.messages) < 3:
@@ -581,7 +590,7 @@ class GNAgent:
         Returns:
             agent state updated with plan
         """
-        
+
         logging.info("Planning")
         input = [self.plan_system_prompt] + state.messages
         logging.info(f"Input in planner: {input}")
@@ -601,7 +610,7 @@ class GNAgent:
         Returns:
             agent state updated with suggestions
         """
-        
+
         logging.info("Reflecting")
         trans_map = {AIMessage: HumanMessage, HumanMessage: AIMessage}
         translated_messages = [self.refl_system_prompt, state.messages[0]] + [
@@ -628,7 +637,7 @@ class GNAgent:
         Returns:
             agent state updated with next agent to call
         """
-        
+
         logging.info("Supervising")
         messages = [
             ("system", self.sup_system_prompt1),
@@ -674,9 +683,9 @@ class GNAgent:
         graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": "planner", # always plan first
+            "next": "planner",  # always plan first
         }
-        thread = {"configurable": {"thread_id": self.chat_id}} # conversation thread
+        thread = {"configurable": {"thread_id": self.chat_id}}  # conversation thread
         result = await graph.ainvoke(initial_state, thread)
 
         return result
