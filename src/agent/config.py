@@ -7,7 +7,6 @@ Note: Need to customize paths
 """
 
 import logging
-import os
 import warnings
 from typing import Literal
 
@@ -33,12 +32,14 @@ DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
-API_KEY = os.getenv("API_KEY").strip()
-
 GENERATIVE_MODEL = dspy.LM(
-    "anthropic/claude-haiku-4-5-20251001",
-    api_key=API_KEY,
+    model="openai/Qwen/Qwen2.5-7B-Instruct",  # should match shell config
+    api_base="http://localhost:7501/v1",
+    api_key="local",
+    model_type="chat",
     max_tokens=10_000,
+    n_ctx=30_000,
+    seed=2_025,
     temperature=0,
     verbose=False,
 )
