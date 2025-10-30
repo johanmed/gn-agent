@@ -4,16 +4,16 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from tqdm import tqdm
 
-with open("/home/johannesm/qtl_tmp/full_docs.txt") as file:
+with open("/home/johannesm/all_tmp/new_docs.txt") as file:
     data = file.read()
     docs = json.loads(data)
 
 
 db = Chroma(
     embedding_function=HuggingFaceEmbeddings(
-        model_name="Qwen/Qwen3-Embedding-0.6B", model_kwargs={"trust_remote_code": True}
+        model_name="Qwen/Qwen3-Embedding-0.6B", model_kwargs={"trust_remote_code": True, "device": "cuda"}
     ),
-    persist_directory="/home/johannesm/qtl_tmp/full_chroma_db",
+    persist_directory="/home/johannesm/all_tmp/new_chroma_db",
 )
 
 chunk_size = 1
