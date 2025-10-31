@@ -741,10 +741,11 @@ class GNAgent:
     async def handler(self, query: str) -> Any:
         # Main question handler of the system
         global_result = await self.invoke_globgraph(query)
+        first_result = global_result.get("messages")[2].content # get first researcher feedback
         finalize_prompt = self.finalize_prompt
         finalize_prompt = finalize_prompt["messages"][0] + global_result.get("messages")
         end_result = generate(question=finalize_prompt)
-        end_result = end_result.get("answer")
+        end_result = f"{first_result}\n{end_result.get('answer')}"
         return end_result
 
 
