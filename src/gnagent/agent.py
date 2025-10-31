@@ -170,9 +170,11 @@ class GNAgent:
         chunks = []
 
         for key in tqdm(collection):
+            concat = ""
             for value in collection[key]:
-                text = f"{key} is/has {value}"
-                chunks.append(text)
+                text = f"{key} is/has {value}. "
+                concat += text
+            chunks.append(concat)
 
         if make_natural == False:
             return chunks
