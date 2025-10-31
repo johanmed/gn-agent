@@ -21,22 +21,29 @@ All functionalities of **GNAgent** have been packaged for seamless experimentati
 git clone https://github.com/johanmed/gn-agent.git
 ```
 
-2. Install all dependencies
+2. Install poetry
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install poetry
+```
+
+3. Install all dependencies
 ```bash
 poetry install
 ```
 
-3. Activate virtual environment
+4. Activate virtual environment
 ```bash
 eval $(poetry env activate)
 ```
 
-4. Navigate to source code
+5. Navigate to source code
 ```bash
 cd src/
 ```
 
-5. Run the system
+6. Run the system
 ```bash
 python3 agent.py
 ```
