@@ -315,7 +315,7 @@ class GNAgent:
 
         logging.info(f"Input in retriever: {state['input']}")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get("context", [])
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 

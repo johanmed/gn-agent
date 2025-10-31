@@ -7,6 +7,6 @@ def make_query_prompt(query: str) -> str:
     )
 
 #question = input("We are ready for you. Please ask your question: ")
-question = "Identify traits that have locus rsm10000000451. For each of those traits, extract the lod score. Only keep those traits with lod score > 3. Look up biological description of those final traits."
+question = "Identify traits that have locus rsm10000000451. For each of those traits, extract the lod score. Only keep those traits with lod score greater or qual to 3. Look up biological description of those final traits."
 
 query = make_query_prompt(query=question)
