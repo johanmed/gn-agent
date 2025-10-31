@@ -137,7 +137,7 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.5, 0.5],  # might need finetuning
+            weights=[0.0, 1.0],  # might need finetuning
         )
 
     def corpus_to_docs(
@@ -170,9 +170,11 @@ class GNAgent:
         chunks = []
 
         for key in tqdm(collection):
+            concat = ""
             for value in collection[key]:
-                text = f"{key} is/has {value}"
-                chunks.append(text)
+                text = f"{key} is/has {value}. "
+                concat += text
+            chunks.append(concat)
 
         if make_natural == False:
             return chunks
