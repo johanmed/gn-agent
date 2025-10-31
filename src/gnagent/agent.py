@@ -137,7 +137,8 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.0, 1.0],  # might need finetuning
+            weights=[0.4, 0.6],  # might need finetuning
+            c=30,
         )
 
     def corpus_to_docs(
@@ -450,7 +451,7 @@ class GNAgent:
             lambda state: state.get("should_continue", "summarize"),
             {"summarize": "summarize", "end": END},
         )
-        subgraph = graph_builder.compile()
+        subgraph = graph_builder.compile(checkpointer=MemorySaver())
 
         return subgraph
 
@@ -464,7 +465,9 @@ class GNAgent:
             "should_continue": "retrieve",  # always retrieve first
         }
 
-        result = await subgraph.ainvoke(initial_state)
+        thread = {"configurable": {"thread_id": self.chat_id}}  # conversation thread
+
+        result = await subgraph.ainvoke(initial_state, thread)
 
         return result
 
@@ -538,19 +541,17 @@ class GNAgent:
 
         subqueries = self.split_query(query)
 
-        with ThreadPoolExecutor(max_workers=len(subqueries)) as worker:
-            results = list(worker.map(self.run_subtask, subqueries))
-
         answers = []
-        for id, result in enumerate(results):
-            if isinstance(result, Exception):
+        for id, subquery in enumerate(subqueries):
+            answer = self.run_subtask(subquery)
+            if isinstance(answer, Exception):
                 answers.append(
                     f"Error in subquery {subqueries[id]}: \
                     {str(result)}"
                 )
             else:
                 answers.append(
-                    result.get("answer", "No answer generated for this subquery.")
+                    answer.get("answer", "No answer generated for this subquery.")
                 )
 
         concatenated_answer = self.finalize(query, subqueries, answers)
@@ -677,7 +678,7 @@ class GNAgent:
                 "end": END,
             },
         )
-        graph = graph_builder.compile(checkpointer=MemorySaver())
+        graph = graph_builder.compile()
 
         return graph
 
@@ -687,8 +688,8 @@ class GNAgent:
             "messages": [("human", query)],
             "next": "planner",  # always plan first
         }
-        thread = {"configurable": {"thread_id": self.chat_id}}  # conversation thread
-        result = await graph.ainvoke(initial_state, thread)
+    
+        result = await graph.ainvoke(initial_state)
 
         return result
 
