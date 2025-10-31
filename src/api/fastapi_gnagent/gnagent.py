@@ -10,7 +10,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
-from src.agent.agent import main
+from gnagent.agent import main
 
 
 class Request(BaseModel):

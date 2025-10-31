@@ -5,7 +5,7 @@ This script tests the GeneNetwork Agent system
 import os
 import sys
 
-from src.agent.agent import GNAgent
+from gnagent.agent import GNAgent
 
 
 def test_agent():

@@ -1,28 +1,28 @@
 [project]
 name = "gnagent"
 version = "0.1.0"
-description = "Agentic system for GeneNetwork research"
+description = "An agent for GeneNetwork"
 authors = [
-    {name = "Johannes Medagbe",email = "johanmedagbe@gmail.com"}
+    {name = "Johannes Medagbe"}
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.13,<3.14"
+requires-python = ">=3.11,<3.13"
 dependencies = [
-    "langchain (>=1.0.2,<2.0.0)",
-    "langchain-community (>=0.4,<0.5)",
-    "langchain-core (>=1.0.1,<2.0.0)",
-    "langgraph (>=1.0.1,<2.0.0)",
-    "pydantic (>=2.12.3,<3.0.0)",
-    "rdflib (>=7.3.0,<8.0.0)",
-    "tqdm (>=4.67.1,<5.0.0)",
-    "typing-extensions (>=4.15.0,<5.0.0)",
-    "dspy (>=3.0.3,<4.0.0)",
-    "sglang[all] (>=0.5.4.post1,<0.6.0)",
-    "flashinfer-python @ git+https://github.com/flashinfer-ai/flashinfer.git",
-    "dotenv (>=0.9.9,<0.10.0)"
+    "langchain (==0.3.26)",
+    "langchain-community (==0.3.27)",
+    "langchain-core (==0.3.74)",
+    "langgraph (==0.6.4)",
+    "pydantic (==2.11.7)",
+    "tqdm (==4.67.1)",
+    "typing-extensions (==4.14.0)",
+    "dspy (==3.0.3)",
+    "uvicorn (>=0.38.0,<0.39.0)",
+    "fastapi (>=0.120.3,<0.121.0)",
+    "sparqlwrapper (==2.0.0)"
 ]
 
+packages = [{include = "gnagent", from = "src"}]
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

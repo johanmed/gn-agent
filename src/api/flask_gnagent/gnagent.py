@@ -8,7 +8,7 @@ import sys
 
 from flask import Blueprint, jsonify, request
 
-from src.agent.agent import main
+from gnagent.agent import main
 
 gnagent = Blueprint("gnagent", __name__)
 

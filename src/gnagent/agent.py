@@ -34,9 +34,9 @@ from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
 
-from config import *
-from prompts import *
-from query import query
+from gnagent.config import *
+from gnagent.prompts import *
+from gnagent.query import query
 
 
 class AgentState(BaseModel):
