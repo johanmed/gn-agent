@@ -28,7 +28,7 @@ CORPUS_PATH = "/home/johannesm/all_corpus/"
 PCORPUS_PATH = "/home/johannesm/all_tmp/new_docs.txt"
 
 # TODO: Customize path
-DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
+DB_PATH = "/home/johannesm/all_tmp/new_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
