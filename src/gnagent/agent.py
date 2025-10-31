@@ -34,9 +34,9 @@ from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
 
-from config import *
-from prompts import *
-from query import query
+from gnagent.config import *
+from gnagent.prompts import *
+from gnagent.query import query
 
 
 class AgentState(BaseModel):
@@ -137,7 +137,7 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.4, 0.6],  # might need finetuning
+            weights=[0.5, 0.5],  # might need finetuning
         )
 
     def corpus_to_docs(

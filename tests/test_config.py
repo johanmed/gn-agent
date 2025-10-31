@@ -5,7 +5,7 @@ This script tests the system configurations
 import os
 import sys
 
-from src.agent.config import generate
+from gnagent.config import generate
 
 
 def test_generate():

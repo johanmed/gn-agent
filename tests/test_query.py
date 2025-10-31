@@ -5,7 +5,7 @@ This script tests query passed to system
 import os
 import sys
 
-from src.agent.query import make_query_prompt
+from gnagent.query import make_query_prompt
 
 
 def test_query():
