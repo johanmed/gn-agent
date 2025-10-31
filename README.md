@@ -47,10 +47,6 @@ cd src/
 ```bash
 python3 agent.py
 ```
-You could also start a Python session for prolonged discussion
-```python
-from agent import *
-```
 
 ## Useful considerations
 - This project is still under development. We are actively chasing bugs :)

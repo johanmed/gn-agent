@@ -1,7 +1,6 @@
 """
 Multi-agent system for GeneNetwork
 This is the main module of the package
-It supports in RAM memory for repetitive and prolonged interactions
 To run: `python agent.py`
 Author: Johannes Medagbe
 Copyright (c) 2025
