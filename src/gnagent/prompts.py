@@ -20,6 +20,24 @@ naturalize_prompt = {
     ]
 }
 
+rephrase_prompt = {
+    "messages": [
+        SystemMessage(
+            """
+            You are a skilled query reformulator for optimal document retrieval.
+            """
+        ),
+        HumanMessage(
+            """
+            Using chat history, reformulate this query to make it relevant. If a trait, marker or entity is referred to in the query, make sure to pick it from the previous query in your memory.
+            You should return only the reformulated query that will be handled independently.
+            Query: {input}
+            Chat history: {existing_history}
+            Result:"""
+        ),
+    ]
+}
+
 analyze_prompt = {
     "messages": [
         SystemMessage(
