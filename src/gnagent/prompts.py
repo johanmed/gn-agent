@@ -124,11 +124,9 @@ finalize_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an experienced geneticist. You can work on what is forgotten and glue different parts together.
-            Ensure the response is insightful, concise, and draws logical inferences where possible.
+            You are an experienced geneticist. You can glue different parts together and come up with an elaborated response to a query.
+            Ensure the response is insightful and concise. The response should be deeply thought.
             Do not modify entities names such as trait and marker.            
-            Make sure to link based on what is common in the answers.
-            Provide only the story, nothing else.
             Do not repeat answers. Use only 200 words max."""
         ),
         HumanMessage(
