@@ -42,7 +42,8 @@ for file in files:
                     if key not in collection:
                         collection[key] = [value]
                     else:
-                        collection[key].append(value)
+                        if value not in collection[key]:
+                            collection[key].append(value)
                 else:
                     line = line.strip()
                     key = copy(mem)
