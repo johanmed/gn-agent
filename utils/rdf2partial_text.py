@@ -60,7 +60,8 @@ for file in files:
                     if key not in collection:
                         collection[key] = [value]
                     else:
-                        collection[key].append(value)
+                        if value not in collection[key]:
+                            collection[key].append(value)
 
 with open(f"{dir}aggr_rdf.txt", "w") as new:
     new.write(json.dumps(collection))
