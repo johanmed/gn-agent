@@ -30,6 +30,7 @@ rephrase_prompt = {
         HumanMessage(
             """
             Using chat history, reformulate this query to make it relevant. If a trait, marker or entity is referred to in the query, make sure to pick it from the previous query in your memory.
+            If the trait, marker or entity is new, do not reformulate.
             You should return only the reformulated query that will be handled independently.
             Query: {input}
             Chat history: {existing_history}
@@ -142,7 +143,7 @@ finalize_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an experienced geneticist. You can glue different parts together and come up with an elaborated response to a query.
+            You are an experienced geneticist. You can come up with an elaborated response to a query.
             Ensure the response is insightful and concise. The response should be deeply thought.
             Do not modify entities names such as trait and marker.            
             Do not repeat answers. Use only 200 words max."""
