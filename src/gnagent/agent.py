@@ -141,7 +141,7 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.4, 0.6],  # might need finetuning
+            weights=[0.3, 0.7],  # might need finetuning
             c=30,
         )
         self.memory = MemorySaver()
@@ -431,20 +431,12 @@ class GNAgent:
 
         logging.info("Summarizing")
 
-        existing_history = state.get("chat_history", [])
-
         current_interaction = f"""
             User: {state["input"]}\nAssistant: {state["answer"]}"""
 
-        full_context = (
-            "\n".join(existing_history) + "\n" + current_interaction
-            if existing_history
-            else current_interaction
-        )
-
         summarize_prompt = self.summarize_prompt.copy()
         last_content = summarize_prompt["messages"][-1].content
-        formatted = last_content.format(full_context=full_context)
+        formatted = last_content.format(full_context=current_interaction)
         summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
             HumanMessage(formatted)
         ]
@@ -453,6 +445,8 @@ class GNAgent:
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
+
+        existing_history = state.get("chat_history", [])
 
         updated_history = existing_history + [summary]  # update chat_history
         logging.info(f"Chat history in summarize: {updated_history}")
