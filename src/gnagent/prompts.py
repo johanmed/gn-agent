@@ -20,6 +20,25 @@ naturalize_prompt = {
     ]
 }
 
+rephrase_prompt = {
+    "messages": [
+        SystemMessage(
+            """
+            You are a skilled query reformulator for optimal document retrieval.
+            """
+        ),
+        HumanMessage(
+            """
+            Using chat history, reformulate this query to make it relevant. If a trait, marker or entity is referred to in the query, make sure to pick it from the previous query in your memory.
+            If the trait, marker or entity is new, do not reformulate.
+            You should return only the reformulated query that will be handled independently.
+            Query: {input}
+            Chat history: {existing_history}
+            Result:"""
+        ),
+    ]
+}
+
 analyze_prompt = {
     "messages": [
         SystemMessage(
@@ -106,9 +125,9 @@ split_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand. You do not invent tasks.
-            Return only the subquestions.
-            Return strictly a JSON list of strings, nothing else."""
+            You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand.
+            Split this task and do not make any assumptions (very important). If the task has multiple sentences, you must split. Return only the subtasks. Return strictly a JSON list of strings, nothing else.
+            If the task has only one sentence, you should return a singleton list of only the revised version of the task."""
         ),
         HumanMessage(
             """
@@ -124,11 +143,10 @@ finalize_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an experienced geneticist. You can work on what is forgotten and glue different parts together.
-            Ensure the response is insightful, concise, and draws logical inferences where possible.
+            You are an experienced geneticist. You can come up with an elaborated response to a query.
+            Ensure the response is accurate, insightful and concise. The response should be deeply thought.
+            Do not omit or substitute an important information.
             Do not modify entities names such as trait and marker.            
-            Make sure to link based on what is common in the answers.
-            Provide only the story, nothing else.
             Do not repeat answers. Use only 200 words max."""
         ),
         HumanMessage(

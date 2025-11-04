@@ -14,6 +14,7 @@ def test_agent():
         pcorpus_path="PCORPUS_PATH",
         db_path="DB_PATH",
         naturalize_prompt="naturalize_prompt",
+        rephrase_prompt="rephrase_prompt",
         analyze_prompt="analyze_prompt",
         check_prompt="check_prompt",
         summarize_prompt="summarize_prompt",

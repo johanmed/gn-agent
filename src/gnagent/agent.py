@@ -1,7 +1,6 @@
 """
 Multi-agent system for GeneNetwork
 This is the main module of the package
-It supports in RAM memory for repetitive and prolonged interactions
 To run: `python agent.py`
 Author: Johannes Medagbe
 Copyright (c) 2025
@@ -13,6 +12,8 @@ import logging
 import os
 import sys
 import time
+import uuid
+
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -85,6 +86,7 @@ class GNAgent:
     pcorpus_path: str
     db_path: str
     naturalize_prompt: Any
+    rephrase_prompt: Any
     analyze_prompt: Any
     check_prompt: Any
     summarize_prompt: Any
@@ -100,6 +102,8 @@ class GNAgent:
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
+    memory : Any = field(init=False)
+    subgraph: Any = field(init=False)
 
     def __post_init__(self):
 
@@ -137,13 +141,16 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.7, 0.3],  # might need finetuning
+            weights=[0.3, 0.7],  # might need finetuning
+            c=30,
         )
+        self.memory = MemorySaver()
+        self.subgraph = self.initialize_subgraph()
 
     def corpus_to_docs(
         self,
         corpus_path: str,
-        chunk_size: int = 1, # small chunk size to match embedding chunks
+        chunk_size: int = 1,  # small chunk size to match embedding chunks
         make_natural: bool = False,
     ) -> list:
         """Extracts documents from file and performs processing
@@ -250,6 +257,49 @@ class GNAgent:
             db.persist()
             return db
 
+    def rephrase(self, state: SubagentState) -> dict:
+        """Rephrases a query to use information in memory
+
+        Args:
+            state: node state
+
+        Returns:
+            node state updated with memory
+        """
+        
+        logging.info("Rephrasing")
+
+        existing_history = (
+            "\n".join(state.get("chat_history", []))
+            if state.get("chat_history", [])
+            else "No prior conversation."
+        )
+        
+        rephrase_prompt = self.rephrase_prompt.copy()
+        last_content = rephrase_prompt["messages"][-1].content
+        formatted = last_content.format(
+            input=state["input"],
+            existing_history=existing_history,
+        )
+        rephrase_prompt["messages"] = self.rephrase_prompt["messages"][:-1] + [
+            HumanMessage(formatted)
+        ]
+        
+        response = generate(question=rephrase_prompt)
+
+        logging.info(f"Response in rephrase: {response}")
+
+        response = response.get("answer")
+        should_continue = "retrieve"
+
+        return {
+            "input": response,
+            "answer": state.get("answer", ""),
+            "should_continue": should_continue,
+            "chat_history": state.get("chat_history", []),
+            "context": state.get("context", []),
+        }
+
     def retrieve(self, state: SubagentState) -> dict:
         """Retrieves relevant documents to a query
 
@@ -262,7 +312,9 @@ class GNAgent:
 
         logging.info("Retrieving")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"])
+        logging.info(f"Input in retriever: {state['input']}")
+
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get("context", [])
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -379,20 +431,12 @@ class GNAgent:
 
         logging.info("Summarizing")
 
-        existing_history = state.get("chat_history", [])
-
         current_interaction = f"""
             User: {state["input"]}\nAssistant: {state["answer"]}"""
 
-        full_context = (
-            "\n".join(existing_history) + "\n" + current_interaction
-            if existing_history
-            else current_interaction
-        )
-
         summarize_prompt = self.summarize_prompt.copy()
         last_content = summarize_prompt["messages"][-1].content
-        formatted = last_content.format(full_context=full_context)
+        formatted = last_content.format(full_context=current_interaction)
         summarize_prompt["messages"] = self.summarize_prompt["messages"][:-1] + [
             HumanMessage(formatted)
         ]
@@ -401,6 +445,8 @@ class GNAgent:
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
             summary = f"- {state['input']} - No valid answer generated"
+
+        existing_history = state.get("chat_history", [])
 
         updated_history = existing_history + [summary]  # update chat_history
         logging.info(f"Chat history in summarize: {updated_history}")
@@ -437,11 +483,13 @@ class GNAgent:
 
     def initialize_subgraph(self) -> Any:
         graph_builder = StateGraph(SubagentState)
+        graph_builder.add_node("rephrase", self.rephrase)
         graph_builder.add_node("retrieve", self.retrieve)
         graph_builder.add_node("check_relevance", self.check_relevance)
         graph_builder.add_node("analyze", self.analyze)
         graph_builder.add_node("summarize", self.summarize)
-        graph_builder.add_edge(START, "retrieve")
+        graph_builder.add_edge(START, "rephrase")
+        graph_builder.add_edge("rephrase", "retrieve")
         graph_builder.add_edge("retrieve", "analyze")
         graph_builder.add_edge("analyze", "check_relevance")
         graph_builder.add_edge("summarize", END)
@@ -450,21 +498,14 @@ class GNAgent:
             lambda state: state.get("should_continue", "summarize"),
             {"summarize": "summarize", "end": END},
         )
-        subgraph = graph_builder.compile()
+        subgraph = graph_builder.compile(checkpointer=self.memory)
 
         return subgraph
 
-    async def invoke_subgraph(self, question: str) -> Any:
-        subgraph = self.initialize_subgraph()
-        initial_state = {
-            "input": question,
-            "chat_history": [],
-            "context": [],
-            "answer": "",
-            "should_continue": "retrieve",  # always retrieve first
-        }
-
-        result = await subgraph.ainvoke(initial_state)
+    async def invoke_subgraph(self, question: str, thread_id: str | None = None) -> Any:
+        
+        config = {"configurable": {"thread_id": thread_id or self.chat_id}}  # conversation thread 
+        result = await self.subgraph.ainvoke({"input": question}, config)
 
         return result
 
@@ -520,9 +561,9 @@ class GNAgent:
 
         return final_answer
 
-    def run_subtask(self, subquery: str) -> dict:
+    def run_subtask(self, subquery: str, research_thread_id: str) -> dict:
         # Handle a subquery
-        result = asyncio.run(self.invoke_subgraph(subquery))
+        result = asyncio.run(self.invoke_subgraph(subquery, research_thread_id))
         return result
 
     def manage_subtasks(self, query: str) -> dict:
@@ -536,21 +577,20 @@ class GNAgent:
             final answer
         """
 
+        research_thread_id = f"researcher_{uuid.uuid4().hex[:8]}"
         subqueries = self.split_query(query)
 
-        with ThreadPoolExecutor(max_workers=len(subqueries)) as worker:
-            results = list(worker.map(self.run_subtask, subqueries))
-
         answers = []
-        for id, result in enumerate(results):
-            if isinstance(result, Exception):
+        for id, subquery in enumerate(subqueries):
+            answer = self.run_subtask(subquery, research_thread_id)
+            if isinstance(answer, Exception):
                 answers.append(
                     f"Error in subquery {subqueries[id]}: \
-                    {str(result)}"
+                    {str(answer)}"
                 )
             else:
                 answers.append(
-                    result.get("answer", "No answer generated for this subquery.")
+                    answer.get("answer", "No answer generated for this subquery.")
                 )
 
         concatenated_answer = self.finalize(query, subqueries, answers)
@@ -677,7 +717,7 @@ class GNAgent:
                 "end": END,
             },
         )
-        graph = graph_builder.compile(checkpointer=MemorySaver())
+        graph = graph_builder.compile()
 
         return graph
 
@@ -687,18 +727,19 @@ class GNAgent:
             "messages": [("human", query)],
             "next": "planner",  # always plan first
         }
-        thread = {"configurable": {"thread_id": self.chat_id}}  # conversation thread
-        result = await graph.ainvoke(initial_state, thread)
+
+        result = await graph.ainvoke(initial_state)
 
         return result
 
     async def handler(self, query: str) -> Any:
         # Main question handler of the system
         global_result = await self.invoke_globgraph(query)
+        first_result = global_result.get("messages")[2].content # get first researcher feedback
         finalize_prompt = self.finalize_prompt
         finalize_prompt = finalize_prompt["messages"][0] + global_result.get("messages")
         end_result = generate(question=finalize_prompt)
-        end_result = end_result.get("answer")
+        end_result = f"{first_result}\n{end_result.get('answer')}"
         return end_result
 
 
@@ -708,6 +749,7 @@ async def main(query: str):
         pcorpus_path=PCORPUS_PATH,
         db_path=DB_PATH,
         naturalize_prompt=naturalize_prompt,
+        rephrase_prompt=rephrase_prompt,
         analyze_prompt=analyze_prompt,
         check_prompt=check_prompt,
         summarize_prompt=summarize_prompt,
