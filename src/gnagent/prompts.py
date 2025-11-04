@@ -124,9 +124,9 @@ split_prompt = {
     "messages": [
         SystemMessage(
             """
-            You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand. You do not invent tasks.
-            Return only the subquestions.
-            Return strictly a JSON list of strings, nothing else."""
+            You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand.
+            Split this task and do not make any assumptions (very important). If the task has multiple sentences, you must split. Return only the subtasks. Return strictly a JSON list of strings, nothing else.
+            If the task has only one sentence, you should return a singleton list of only the revised version of the task."""
         ),
         HumanMessage(
             """
