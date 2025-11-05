@@ -2,9 +2,6 @@
 This script tests the GeneNetwork Agent system
 """
 
-import os
-import sys
-
 from gnagent.agent import GNAgent
 
 

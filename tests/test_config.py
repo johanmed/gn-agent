@@ -2,9 +2,6 @@
 This script tests the system configurations
 """
 
-import os
-import sys
-
 from gnagent.config import generate
 
 
