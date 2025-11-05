@@ -7,6 +7,7 @@ Note: Need to customize paths
 """
 
 import logging
+import os
 import warnings
 from typing import Literal
 
@@ -31,6 +32,8 @@ PCORPUS_PATH = "/home/johannesm/all_tmp/new_docs.txt"
 DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
+
+API_KEY = os.getenv("API_KEY")
 
 GENERATIVE_MODEL = dspy.LM(
     "anthropic/claude-haiku-4-5-20251001",
