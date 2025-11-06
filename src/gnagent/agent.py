@@ -739,7 +739,7 @@ class GNAgent:
         finalize_prompt = self.finalize_prompt
         finalize_prompt = finalize_prompt["messages"][0] + global_result.get("messages")
         end_result = generate(question=finalize_prompt)
-        end_result = f"{first_result}\n{end_result.get('answer')}"
+        end_result = f"Initial: {first_result}\n\n Improved: {end_result.get('answer')}"
         return end_result
 
 
