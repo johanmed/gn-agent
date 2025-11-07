@@ -141,7 +141,7 @@ class GNAgent:
                 ),  # might need finetuning
                 bm25_retriever,
             ],
-            weights=[0.3, 0.7],  # might need finetuning
+            weights=[0.5, 0.5],  # might need finetuning
             c=30,
         )
         self.memory = MemorySaver()
