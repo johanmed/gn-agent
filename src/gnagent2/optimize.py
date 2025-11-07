@@ -11,7 +11,7 @@ train_set, val_set, test_set = get_dataset()
 evaluate = dspy.Evaluate(
     devset=test_set,
     metric=match_checker,
-    num_threads=8,
+    num_threads=1,
     display_table=True,
     display_progress=True,
 )
@@ -21,7 +21,7 @@ evaluate(program)
 optimizer = GEPA(
     metric=match_checker_feedback,
     auto="light",
-    num_threads=8,
+    num_threads=1,
     track_stats=True,
     reflection_minibatch_size=3,
     reflection_lm=GENERATIVE_MODEL,
