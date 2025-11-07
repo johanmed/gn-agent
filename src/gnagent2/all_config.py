@@ -57,9 +57,12 @@ def match_checker(
     pred_name=None,
     pred_trace=None,
 ) -> int:
+    logging.info(f"Example: {example}")
+    logging.info(f"Prediction: {prediction}")
     true_answer = example["answer"]
     generated_answer = prediction.get("answer")
     judgement = judge(generated=generated_answer, correct=true_answer)
+    logging.info(f"Judgement: {judgement}")
     decision, confidence = judgement.get("decision"), judgement.get("confidence")
     if confidence > 0.5 and decision == "similar":
         return 1
@@ -74,10 +77,13 @@ def match_checker_feedback(
     pred_name=None,
     pred_trace=None,
 ) -> dspy.Prediction:
+    logging.info(f"Example: {example}")
+    logging.info(f"Prediction: {prediction}")
     correct_answer = example["answer"]
     correct_reasoning = example["reasoning"]
     generated_answer = prediction.get("answer")
     judgement = judge(generated=generated_answer, correct=correct_answer)
+    logging.info(f"Judgement: {judgement}")
     decision, confidence = judgement.get("decision"), judgement.get("confidence")
     if confidence > 0.5 and decision == "similar":
         outcome = 1
