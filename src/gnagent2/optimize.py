@@ -14,6 +14,7 @@ evaluate = dspy.Evaluate(
     num_threads=1,
     display_table=True,
     display_progress=True,
+    lm=REFLECTION_MODEL,
 )
 
 evaluate(program)
@@ -24,7 +25,7 @@ optimizer = GEPA(
     num_threads=1,
     track_stats=True,
     reflection_minibatch_size=3,
-    reflection_lm=GENERATIVE_MODEL,
+    reflection_lm=REFLECTION_MODEL,
 )
 
 optimized_program = optimizer.compile(
@@ -36,3 +37,4 @@ optimized_program = optimizer.compile(
 evaluate(optimized_program)
 
 optimized_program.save("optimized_program.json")
+
