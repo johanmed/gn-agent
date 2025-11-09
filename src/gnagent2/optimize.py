@@ -24,7 +24,7 @@ optimizer = GEPA(
     num_threads=1,
     track_stats=True,
     reflection_minibatch_size=3,
-    reflection_lm=GENERATIVE_MODEL,
+    reflection_lm=REFLECTION_MODEL,
 )
 
 optimized_program = optimizer.compile(
