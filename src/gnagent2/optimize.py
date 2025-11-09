@@ -6,6 +6,8 @@ from dspy import GEPA
 
 from all_config import *
 
+dspy.settings.configure(constrain_outputs=False)
+
 train_set, val_set, test_set = get_dataset()
 
 evaluate = dspy.Evaluate(
