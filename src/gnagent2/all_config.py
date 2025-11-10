@@ -6,6 +6,7 @@ See optimize.py
 import asyncio
 import os
 import random
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Literal
 
 import dspy
@@ -18,7 +19,7 @@ EXAMPLE_PATH = "examples/examples.csv"
 
 
 def get_dataset(split_ratio: int = 0.7, example_path: str = EXAMPLE_PATH) -> Any:
-    data = pd.read_csv(example_path)
+    data = pd.read_csv(example_path, nrows=10)
     data_dict = data_dicts = data[["query", "answer", "reasoning"]].to_dict(
         orient="records"
     )
@@ -135,15 +136,6 @@ agent = GNAgent(
 )
 
 
-class QASignature(dspy.Signature):
-    """
-    Wraps query and answer for GNAgent
-    """
-
-    query: str = dspy.InputField(desc="user query")
-    answer: str = dspy.OutputField(desc="final answer")
-
-
 class GNAgentProgram(dspy.Module):
     """
     Transforms GNAgent to a dspy Program
@@ -152,22 +144,21 @@ class GNAgentProgram(dspy.Module):
     def __init__(self, gn_agent: GNAgent):
         super().__init__()
         self.gn_agent = gn_agent
-        self.predict = dspy.Predict(QASignature)
+        self.executor = ThreadPoolExecutor(max_workers=1)
 
-    def forward(self, query: str) -> dspy.Prediction:
-        """
-        Runs the async handler inside a temporary event loop.
-        """
-        # Run async graph
+    def _run_handler(self, query):
+        # Runs async handler in clean event loop
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        raw = loop.run_until_complete(self.gn_agent.handler(query))
-        loop.close()
+        try:
+            return loop.run_until_complete(self.gn_agent.handler(query))
+        finally:
+            loop.close()
 
-        answer = str(raw).strip()
-
-        # Return a DSPy prediction
-        return self.predict(query=query, answer=answer)
+    def forward(self, query):
+        # Runs async call in thread
+        result = self.executor.submit(self._run_handler, query).result()
+        return dspy.Prediction(answer=str(result).strip())
 
 
 program = GNAgentProgram(agent)
