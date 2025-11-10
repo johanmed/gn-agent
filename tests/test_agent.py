@@ -18,12 +18,12 @@ def test_agent():
         synthesize_prompt="synthesize_prompt",
         split_prompt="split_prompt",
         finalize_prompt="finalize_prompt",
-        sup_system_prompt1="sup_system_prompt1",
-        sup_system_prompt2="sup_system_prompt2",
-        plan_system_prompt="plan_system_prompt",
-        refl_system_prompt="refl_system_prompt",
+        sup_prompt1="sup_prompt1",
+        sup_prompt2="sup_prompt2",
+        plan_prompt="plan_prompt",
+        refl_prompt="refl_prompt",
     )
     assert (
         agent.corpus_path == "CORPUS_PATH"
-        and agent.refl_system_prompt == "refl_system_prompt"
+        and agent.refl_prompt == "refl_prompt"
     )

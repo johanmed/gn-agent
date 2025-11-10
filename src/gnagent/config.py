@@ -47,63 +47,91 @@ GENERATIVE_MODEL = dspy.LM(
 dspy.configure(lm=GENERATIVE_MODEL)
 
 
-# Main function to interact with LLM
-generate = dspy.ChainOfThought("question -> answer: str")
-
-
-class Subquery(dspy.Signature):
-    query: str = dspy.InputField(desc="the task to solve")
-    answer: list = dspy.OutputField(
-        desc="the smaller tasks that help solve the main task"
-    )
-    reasoning: str = dspy.OutputField(
-        desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
-    )
-
-
-# Specialized LLM function to extract subqueries
-subquery = dspy.Predict(Subquery)
-
-
 class Plan(dspy.Signature):
-    background: list[BaseMessage] = dspy.InputField(
-        desc="the background to use to decide"
-    )
-    answer: str = dspy.OutputField(desc="the task result")
+    background: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="The plan to solve the task")
     reasoning: str = dspy.OutputField(
-        desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
+        desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
-
-
-# Specialized LLM function to make plan
+# Module to make plan
 plan = dspy.Predict(Plan)
 
 
 class Tune(dspy.Signature):
-    background: list[BaseMessage] = dspy.InputField(
-        desc="the background to use to ask new questions"
-    )
-    answer: str = dspy.OutputField(desc="the new questions")
+    background: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="The new questions")
     reasoning: str = dspy.OutputField(
-        desc="provide a concise explanation of the thought process for the input, limited to approximately 50 words."
+        desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
-
-
-# Specialized LLM function to tune reflection
+# Module to tune reflection
 tune = dspy.Predict(Tune)
 
 
 class Decide(dspy.Signature):
-    background: list[BaseMessage] = dspy.InputField(
-        desc="the background to use to make decision"
-    )
+    background: list[BaseMessage] = dspy.InputField()
     next: Literal["researcher", "reflector", "end"] = dspy.OutputField(
-        desc="the next step to take"
+        desc="The next step to take"
     )
     reasoning: str = dspy.OutputField(
-        desc="provide a concise explanation of the decision given the input, limited to approximately 50 words."
+        desc="Provide a concise explanation of the decision given the input, limited to approximately 50 words."
     )
-
-
-# Specialized LLM function to manage system
+# Module to manage system
 supervise = dspy.Predict(Decide)
+
+
+class End(dspy.Signature):
+    question: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="Well formulated final feedback")
+# Module to wrap up
+end = dspy.Predict(End)
+
+# Specialized modules for researcher
+
+class Naturalize(dspy.Signature):
+    text: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="Natural English sentence")
+naturalize_pred = dspy.Predict(Naturalize)
+
+class Rephrase(dspy.Signature):
+    input: list[BaseMessage] = dspy.InputField()
+    existing_history: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="Reformulated query")
+rephrase_pred = dspy.Predict(Rephrase)
+
+class Analyze(dspy.Signature):
+    context: list[BaseMessage] = dspy.InputField()
+    existing_history: list[BaseMessage] = dspy.InputField()
+    input: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="Analysis (≤200 words)")
+analyze_pred = dspy.Predict(Analyze)
+
+class Check(dspy.Signature):
+    answer: list[BaseMessage] = dspy.InputField()
+    input: list[BaseMessage] = dspy.InputField()
+    decision: str = dspy.OutputField(desc='"yes" or "no"')
+check_pred = dspy.Predict(Check)
+
+class Summarize(dspy.Signature):
+    full_context: list[BaseMessage] = dspy.InputField()
+    summary: str = dspy.OutputField(desc="Bullet-point summary")
+summarize_pred = dspy.Predict(Summarize)
+
+class Synthesize(dspy.Signature):
+    input: list[BaseMessage] = dspy.InputField()
+    updated_history: list[BaseMessage] = dspy.InputField()
+    conclusion: str = dspy.OutputField(desc="Final paragraph")
+synthesize_pred = dspy.Predict(Synthesize)
+
+class Subquery(dspy.Signature):
+    query: list[BaseMessage] = dspy.InputField()
+    answer: list[str] = dspy.OutputField(
+        desc="The list of smaller tasks"
+     )
+subquery = dspy.Predict(Subquery)
+
+class Finalize(dspy.Signature):
+    query: list[BaseMessage] = dspy.InputField()
+    subqueries: list[BaseMessage] = dspy.InputField()
+    answers: list[BaseMessage] = dspy.InputField()
+    conclusion: str = dspy.OutputField(desc="Final answer")
+finalize_pred = dspy.Predict(Finalize)
