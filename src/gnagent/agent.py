@@ -13,7 +13,6 @@ import os
 import sys
 import time
 import uuid
-
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -21,6 +20,9 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Literal
 
+from gnagent.config import *
+from gnagent.prompts import *
+from gnagent.query import query
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
@@ -34,10 +36,6 @@ from pydantic import BaseModel
 from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
-
-from gnagent.config import *
-from gnagent.prompts import *
-from gnagent.query import query
 
 
 class AgentState(BaseModel):
@@ -101,7 +99,7 @@ class GNAgent:
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
-    memory : Any = field(init=False)
+    memory: Any = field(init=False)
     subgraph: Any = field(init=False)
 
     def __post_init__(self):
@@ -262,7 +260,7 @@ class GNAgent:
         Returns:
             node state updated with memory
         """
-        
+
         logging.info("Rephrasing")
 
         existing_history = (
@@ -270,10 +268,12 @@ class GNAgent:
             if state.get("chat_history", [])
             else "No prior conversation."
         )
-        
+
         rephrase_prompt = [self.rephrase_prompt.copy(), HumanMessage(state["input"])]
-        
-        response = rephrase_pred(input=rephrase_prompt, existing_history=[HumanMessage(existing_history)])
+
+        response = rephrase_pred(
+            input=rephrase_prompt, existing_history=[HumanMessage(existing_history)]
+        )
 
         logging.info(f"Response in rephrase: {response}")
 
@@ -302,7 +302,9 @@ class GNAgent:
 
         logging.info(f"Input in retriever: {state['input']}")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get("context", [])
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get(
+            "context", []
+        )
 
         logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -345,8 +347,12 @@ class GNAgent:
         )
 
         analyze_prompt = [self.analyze_prompt.copy(), HumanMessage(state["input"])]
-        
-        response = analyze_pred(input=analyze_prompt, context=[HumanMessage(truncated_context)], existing_history=[HumanMessage(existing_history)])
+
+        response = analyze_pred(
+            input=analyze_prompt,
+            context=[HumanMessage(truncated_context)],
+            existing_history=[HumanMessage(existing_history)],
+        )
 
         logging.info(f"Response in analyze: {response}")
 
@@ -374,9 +380,9 @@ class GNAgent:
         logging.info("Checking relevance")
 
         answer = state["answer"]
-        
+
         check_prompt = [self.check_prompt.copy(), HumanMessage(state["input"])]
-        
+
         assessment = check_pred(input=check_prompt, answer=[HumanMessage(answer)])
         logging.info(f"Assessment in checking relevance: {assessment}")
 
@@ -410,7 +416,10 @@ class GNAgent:
         current_interaction = f"""
             User: {state["input"]}\nAssistant: {state["answer"]}"""
 
-        summarize_prompt = [self.summarize_prompt.copy(), HumanMessage(current_interaction)]
+        summarize_prompt = [
+            self.summarize_prompt.copy(),
+            HumanMessage(current_interaction),
+        ]
 
         summary = summarize_pred(full_context=summarize_prompt)
         summary = summary.get("summary")
@@ -427,8 +436,13 @@ class GNAgent:
         if not updated_history:
             final_answer = "Insufficient data for analysis."
         else:
-            synthesize_prompt = [self.synthesize_prompt.copy(), HumanMessage(state["input"])]
-            result = synthesize_pred(input=synthesize_prompt, updated_history=[HumanMessage(updated_history)])
+            synthesize_prompt = [
+                self.synthesize_prompt.copy(),
+                HumanMessage(state["input"]),
+            ]
+            result = synthesize_pred(
+                input=synthesize_prompt, updated_history=[HumanMessage(updated_history)]
+            )
             logging.info(f"Result in summarize: {result}")
 
             result = result.get("conclusion")
@@ -468,8 +482,8 @@ class GNAgent:
         return subgraph
 
     async def invoke_subgraph(self, question: str, thread_id: str) -> Any:
-        
-        config = {"configurable": {"thread_id": thread_id}}  # conversation thread 
+
+        config = {"configurable": {"thread_id": thread_id}}  # conversation thread
         result = await self.subgraph.ainvoke({"input": question}, config)
 
         return result
@@ -501,7 +515,11 @@ class GNAgent:
         logging.info("Finalizing")
 
         finalize_prompt = [self.finalize_prompt.copy(), HumanMessage(query)]
-        result = finalize_pred(query=finalize_prompt, subqueries=[HumanMessage(subqueries)], answers=[HumanMessage(answers)])
+        result = finalize_pred(
+            query=finalize_prompt,
+            subqueries=[HumanMessage(subqueries)],
+            answers=[HumanMessage(answers)],
+        )
 
         logging.info(f"Result in finalize: {result}")
         result = result.get("conclusion")
@@ -688,11 +706,17 @@ class GNAgent:
     async def handler(self, query: str) -> Any:
         # Main question handler of the system
         global_result = await self.invoke_globgraph(query)
-        first_result = global_result.get("messages")[2].content # get first researcher feedback
+        first_result = global_result.get("messages")[
+            2
+        ].content  # get first researcher feedback
         end_prompt = global_result.get("messages")
         end_result = end(question=end_prompt)
-        end_result = f"\nInitial: {first_result}\n\n Improved: {end_result.get('answer')}"
-        return end_result
+        end_result = (
+            f"\nInitial: {first_result}\n\n Improved: {end_result.get('answer')}"
+        )
+        # Extract reasoning from all messages
+        reasoning = " ".join(msg.content for msg in end_prompt)
+        return end_result, reasoning
 
 
 async def main(query: str):
