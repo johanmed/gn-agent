@@ -97,7 +97,6 @@ class GNAgent:
     sup_system_prompt2: Any
     plan_system_prompt: Any
     refl_system_prompt: Any
-    chat_id: str = "default"
     max_global_visits: int = 5
     chroma_db: Any = field(init=False)
     docs: list = field(init=False)
@@ -502,9 +501,9 @@ class GNAgent:
 
         return subgraph
 
-    async def invoke_subgraph(self, question: str, thread_id: str | None = None) -> Any:
+    async def invoke_subgraph(self, question: str, thread_id: str) -> Any:
         
-        config = {"configurable": {"thread_id": thread_id or self.chat_id}}  # conversation thread 
+        config = {"configurable": {"thread_id": thread_id}}  # conversation thread 
         result = await self.subgraph.ainvoke({"input": question}, config)
 
         return result
