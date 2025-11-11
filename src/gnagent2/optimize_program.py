@@ -10,7 +10,6 @@ from dspy import GEPA
 
 from all_config import *
 
-dspy.settings.configure(constrain_outputs=False)
 
 train_set, val_set, test_set = get_dataset()
 
@@ -26,44 +25,31 @@ evaluate = dspy.Evaluate(
 evaluate(program)
 
 @dataclass
-class GepaOptimization:
+class ProgramOptimization:
     """
     Wraps GEPA optimization of GeneNetwork Agent's prompts using a reflection model
     """
-    gnagent_program: Any
+    program: Any
     reflection_model: Any
-    prompts: list[str] = field(default_factory=lambda: [
-        "plan",
-        "tune",
-        "supervise",
-        "end",
-        "rephrase",
-        "analyze",
-        "check",
-        "summarize",
-        "synthesize",
-        "subquery",
-        "finalize",
-    ])
+    metric : Any
+    train_set: list[dspy.Example]
+    val_set: list[dspy.Example]
     output_path: str = "optimized_program.json"
     
     def gepa_optimize(self) -> Any:
-        
         optimizer = GEPA(
-            metric=match_checker_feedback,
+            metric=self.metric,
             auto="light",
             num_threads=1,
             track_stats=True,
             reflection_lm=self.reflection_model,
             seed=2025,
         )
-
         optimized_program = optimizer.compile(
-            program,
-            trainset=train_set,
-            valset=val_set,
+            self.program,
+            trainset=self.train_set,
+            valset=self.val_set,
         )
-
         evaluate(optimized_program)
 
         # Save new configurations
@@ -71,5 +57,7 @@ class GepaOptimization:
 
         return optimized_program
 
-run = GepaOptimization(gnagent_program=program, reflection_model=REFLECTION_MODEL)
-run.gepa_optimize()
+if not Path("optimized_program.json").exists():
+    program_run = ProgramOptimization(program=program, reflection_model=REFLECTION_MODEL, metric=match_checker_feedback, train_set=train_set, val_set=val_set)
+    program_run.gepa_optimize()
+    
