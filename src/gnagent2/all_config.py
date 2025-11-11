@@ -88,11 +88,17 @@ def match_checker(
 
     use = f"Query: {query} \nAnswer of the AI system: {generated_answer}. \nDoes the answer of the system of any use in addressing the query?"
     use_score = judge(question=use).get("answer")
-    
+
     inclusion = f"Correct answer: {correct_answer} \nReasoning of the AI system: {generated_reasoning}. \nDoes the correct answer appears in the reasoning of the AI system?"
     inclusion_score = judge(question=inclusion).get("answer")
-    
-    score = similarity_score1 + similarity_score2 + inclusion_score + logic_score + use_score
+
+    score = (
+        similarity_score1
+        + similarity_score2
+        + inclusion_score
+        + logic_score
+        + use_score
+    )
     logging.info(f"Score: {score}")
 
     return 1 if score >= 2 else 0
@@ -126,11 +132,17 @@ def match_checker_feedback(
 
     use = f"Query: {query} \nAnswer of the AI system: {generated_answer}. \nDoes the answer of the system of any use in addressing the query?"
     use_score = judge(question=use).get("answer")
-    
+
     inclusion = f"Correct answer: {correct_answer} \nReasoning of the AI system: {generated_reasoning}. \nDoes the correct answer appears in the reasoning of the AI system?"
     inclusion_score = judge(question=inclusion).get("answer")
-    
-    score = similarity_score1 + similarity_score2 + inclusion_score + logic_score + use_score
+
+    score = (
+        similarity_score1
+        + similarity_score2
+        + inclusion_score
+        + logic_score
+        + use_score
+    )
     logging.info(f"Score: {score}")
 
     feedback = ""
@@ -145,4 +157,3 @@ def match_checker_feedback(
         feedback += f" Here's the full step-by-step reasoning:\n{correct_reasoning}\n\nThink about what takeaways you can learn from this solution to improve your future answers and approach to similar queries."
 
     return dspy.Prediction(score=final_score, feedback=feedback)
-

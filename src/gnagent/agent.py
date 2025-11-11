@@ -101,7 +101,7 @@ class GNAgent:
     ensemble_retriever: Any = field(init=False)
     memory: Any = field(init=False)
     subgraph: Any = field(init=False)
-
+    
     def __post_init__(self):
 
         # Process or load documents
@@ -723,6 +723,23 @@ class GNAgent:
         return end_result, reasoning
 
 
+    async def forward(self, query: str) -> dspy.Prediction:
+        """DSPy-compatible forward pass.
+
+        Runs the full agent handler and returns a Prediction containing the final answer and reasoning.
+
+        Args:
+            query: The input query to process.
+
+        Returns:
+            A dspy.Prediction object with:
+            - answer: The final generated response.
+            - reasoning: The complete reasoning trace from the agent execution.
+        """
+        end_result, reasoning = await self.handler(query)
+        return dspy.Prediction(answer=end_result, reasoning=reasoning)
+
+    
 async def main(query: str):
     agent = GNAgent(
         corpus_path=CORPUS_PATH,
@@ -742,8 +759,9 @@ async def main(query: str):
         refl_prompt=refl_prompt,
     )
 
-    output = await agent.handler(query)
-    logging.info(f"\n\nSystem feedback: {output}")
+    output = await agent(query=query)  # Uses forward
+    logging.info(f"\n\nSystem feedback: {output.get('answer')}")
+    logging.info(f"\n\nReasoning: {output.get('reasoning')}")
 
 
 if __name__ == "__main__":
