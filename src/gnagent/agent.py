@@ -704,17 +704,21 @@ class GNAgent:
         return result
 
     async def handler(self, query: str) -> Any:
-        # Main question handler of the system
+        """
+        Main question handler of the system
+        """
         global_result = await self.invoke_globgraph(query)
         first_result = global_result.get("messages")[
             2
         ].content  # get first researcher feedback
+
         end_prompt = global_result.get("messages")
         end_result = end(question=end_prompt)
         end_result = (
             f"\nInitial: {first_result}\n\n Improved: {end_result.get('answer')}"
         )
-        # Extract reasoning from all messages
+        
+        # Extract full reasoning from all messages
         reasoning = " ".join(msg.content for msg in end_prompt)
         return end_result, reasoning
 
