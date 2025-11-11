@@ -20,7 +20,7 @@ class MetricProgram(dspy.Module):
     Metric should not give feedback
     """
     checker: Callable = match_checker
-    judge: dspy.Predict = judge
+    judge: dspy.Predict = dspy.Predict(Judge)
 
     def __post_init__(self):
         super().__init__()
