@@ -13,6 +13,54 @@ from all_config import *
 
 train_set, val_set, test_set = get_dataset()
 
+agent = GNAgent(
+    corpus_path=CORPUS_PATH,
+    pcorpus_path=PCORPUS_PATH,
+    db_path=DB_PATH,
+    naturalize_prompt=naturalize_prompt,
+    rephrase_prompt=rephrase_prompt,
+    analyze_prompt=analyze_prompt,
+    check_prompt=check_prompt,
+    summarize_prompt=summarize_prompt,
+    synthesize_prompt=synthesize_prompt,
+    split_prompt=split_prompt,
+    finalize_prompt=finalize_prompt,
+    sup_prompt1=sup_prompt1,
+    sup_prompt2=sup_prompt2,
+    plan_prompt=plan_prompt,
+    refl_prompt=refl_prompt,
+)
+
+
+class GNAgentProgram(dspy.Module):
+    """
+    Transforms GNAgent to a dspy Program
+    """
+
+    def __init__(self, gn_agent: GNAgent):
+        super().__init__()
+        self.gn_agent = gn_agent
+        self.executor = ThreadPoolExecutor(max_workers=1)
+
+    def _run_handler(self, query):
+        # Runs async handler in clean event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.gn_agent.handler(query))
+        finally:
+            loop.close()
+
+    def forward(self, query):
+        # Runs async call in thread
+        answer, reasoning = self.executor.submit(self._run_handler, query).result()
+        return dspy.Prediction(
+            answer=str(answer).strip(), reasoning=str(reasoning).strip()
+        )
+
+
+program = GNAgentProgram(agent)
+
 evaluate = dspy.Evaluate(
     devset=test_set,
     metric=match_checker,
