@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from dspy import GEPA
+from langchain_core.messages import SystemMessage
 
 from all_config import *
-
+from gnagent_adapter import GNAgentAdapter
 
 train_set, val_set, test_set = get_dataset()
-        
+
 agent = GNAgent(
     corpus_path=CORPUS_PATH,
     pcorpus_path=PCORPUS_PATH,
@@ -44,13 +45,17 @@ evaluate = dspy.Evaluate(
 evaluate(agent)
 
 
+# Create adapter for GNagent
+adapter = GNAgentAdapter(agent)
+
+
 @dataclass
 class ProgramOptimization:
     """
     Wraps GEPA optimization of GeneNetwork Agent's prompts using a reflection model
     """
 
-    program: Any
+    program: Any  # Must be GNAgent adapter
     reflection_model: Any
     metric: Any
     train_set: list[dspy.Example]
@@ -71,20 +76,22 @@ class ProgramOptimization:
             trainset=self.train_set,
             valset=self.val_set,
         )
-        evaluate(optimized_program)
-
-        # Save new configurations
-        optimized_program.save(self.output_path)
+        optimized_program.save_config(self.output_path)
 
         return optimized_program
 
 
-if not Path("optimized_program.json").exists():
-    program_run = ProgramOptimization(
-        program=agent,
-        reflection_model=REFLECTION_MODEL,
-        metric=match_checker_feedback,
-        train_set=train_set,
-        val_set=val_set,
-    )
-    program_run.gepa_optimize()
+if __name__ == "__main__":
+    if not Path("optimized_program.json").exists():
+        program_run = ProgramOptimization(
+            program=adapter,
+            reflection_model=REFLECTION_MODEL,
+            metric=match_checker_feedback,
+            train_set=train_set,
+            val_set=val_set,
+        )
+        program_run.gepa_optimize()
+    else:
+        print("optimized_program.json already exists!")
+        optimized_agent = agent.load("optimized_program.json")
+        evaluate(optimized_agent)
