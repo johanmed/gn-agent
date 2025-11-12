@@ -4,13 +4,14 @@ This script optimizes prompts of GeneNetwork Agent using GEPA
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict
 
 from dspy import GEPA
 from langchain_core.messages import SystemMessage
 
 from all_config import *
-from gnagent_adapter import GNAgentAdapter
+from gnagent_adapter import adapter
+
 
 train_set, val_set, test_set = get_dataset()
 
@@ -37,12 +38,12 @@ class GNAgentProgram(dspy.Module):
     """
     Transforms GNAgent to a dspy Program
     """
-
+    
     def __init__(self, gn_agent: GNAgent):
         super().__init__()
         self.gn_agent = gn_agent
         self.executor = ThreadPoolExecutor(max_workers=1)
-
+            
     def run_handler(self, query):
         # Runs async handler in clean event loop
         loop = asyncio.new_event_loop()
@@ -52,8 +53,7 @@ class GNAgentProgram(dspy.Module):
         finally:
             loop.close()
 
-    def forward(self, query):
-        # Runs async call in thread
+    def forward(self, query) -> dspy.Prediction:
         answer, reasoning = self.executor.submit(self.run_handler, query).result()
         return dspy.Prediction(
             answer=str(answer).strip(), reasoning=str(reasoning).strip()
@@ -73,10 +73,6 @@ evaluate = dspy.Evaluate(
 )
 
 evaluate(program)
-
-
-# Create adapter for GNagent
-adapter = GNAgentAdapter(program)
 
 
 @dataclass
@@ -106,7 +102,7 @@ class ProgramOptimization:
             trainset=self.train_set,
             valset=self.val_set,
         )
-        optimized_program.save_config(self.output_path)
+        optimized_program.save(self.output_path)
 
         return optimized_program
 

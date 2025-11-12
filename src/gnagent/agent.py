@@ -20,6 +20,7 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Literal
 
+from chromadb.config import Settings
 from gnagent.config import *
 from gnagent.prompts import *
 from gnagent.query import query
@@ -229,13 +230,22 @@ class GNAgent:
 
         logging.info("In set_chroma_db")
 
+        db_path = str(db_path)
+        settings = Settings(
+            is_persistent=True,
+            persist_directory=db_path,
+            anonymized_telemetry=False,
+        )
+
+        
         if Path(db_path).exists():
-            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            db = Chroma(persist_directory=db_path, embedding_function=embed_model, client_settings=settings)
             return db
         else:
             db = Chroma(
                 embedding_function=embed_model,
                 persist_directory=db_path,
+                client_settings=settings,
             )
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
