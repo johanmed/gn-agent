@@ -18,6 +18,7 @@ from langchain_core.messages import BaseMessage
 
 EXAMPLE_PATH = "examples/examples.csv"
 
+REFLECTION_MODEL=GENERATIVE_MODEL
 
 def get_dataset(split_ratio: int = 0.7, example_path: str = EXAMPLE_PATH) -> Any:
     data = pd.read_csv(example_path, nrows=30)
