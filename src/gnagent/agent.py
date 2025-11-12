@@ -722,23 +722,6 @@ class GNAgent:
         reasoning = " ".join(msg.content for msg in end_prompt)
         return end_result, reasoning
 
-
-    async def forward(self, query: str) -> dspy.Prediction:
-        """DSPy-compatible forward pass.
-
-        Runs the full agent handler and returns a Prediction containing the final answer and reasoning.
-
-        Args:
-            query: The input query to process.
-
-        Returns:
-            A dspy.Prediction object with:
-            - answer: The final generated response.
-            - reasoning: The complete reasoning trace from the agent execution.
-        """
-        end_result, reasoning = await self.handler(query)
-        return dspy.Prediction(answer=end_result, reasoning=reasoning)
-
     
 async def main(query: str):
     agent = GNAgent(
@@ -759,9 +742,9 @@ async def main(query: str):
         refl_prompt=refl_prompt,
     )
 
-    output = await agent(query=query)  # Uses forward
-    logging.info(f"\n\nSystem feedback: {output.get('answer')}")
-    logging.info(f"\n\nReasoning: {output.get('reasoning')}")
+    output, reasoning = await agent.handler(query)
+    logging.info(f"\n\nSystem feedback: {output}")
+    logging.info(f"\n\nReasoning: {reasoning}")
 
 
 if __name__ == "__main__":

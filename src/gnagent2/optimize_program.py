@@ -33,6 +33,36 @@ agent = GNAgent(
 )
 
 
+class GNAgentProgram(dspy.Module):
+    """
+    Transforms GNAgent to a dspy Program
+    """
+
+    def __init__(self, gn_agent: GNAgent):
+        super().__init__()
+        self.gn_agent = gn_agent
+        self.executor = ThreadPoolExecutor(max_workers=1)
+
+    def run_handler(self, query):
+        # Runs async handler in clean event loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            return loop.run_until_complete(self.gn_agent.handler(query))
+        finally:
+            loop.close()
+
+    def forward(self, query):
+        # Runs async call in thread
+        answer, reasoning = self.executor.submit(self.run_handler, query).result()
+        return dspy.Prediction(
+            answer=str(answer).strip(), reasoning=str(reasoning).strip()
+        )
+
+
+program = GNAgentProgram(agent)
+
+
 evaluate = dspy.Evaluate(
     devset=test_set,
     metric=match_checker,
@@ -42,11 +72,11 @@ evaluate = dspy.Evaluate(
     lm=REFLECTION_MODEL,
 )
 
-evaluate(agent)
+evaluate(program)
 
 
 # Create adapter for GNagent
-adapter = GNAgentAdapter(agent)
+adapter = GNAgentAdapter(program)
 
 
 @dataclass
@@ -93,5 +123,5 @@ if __name__ == "__main__":
         program_run.gepa_optimize()
     else:
         print("optimized_program.json already exists!")
-        optimized_agent = agent.load("optimized_program.json")
-        evaluate(optimized_agent)
+        optimized_program = program.load("optimized_program.json")
+        evaluate(optimized_program)
