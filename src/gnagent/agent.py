@@ -20,6 +20,7 @@ from glob import glob
 from pathlib import Path
 from typing import Any, Literal
 
+from chromadb.config import Settings
 from gnagent.config import *
 from gnagent.prompts import *
 from gnagent.query import query
@@ -101,7 +102,7 @@ class GNAgent:
     ensemble_retriever: Any = field(init=False)
     memory: Any = field(init=False)
     subgraph: Any = field(init=False)
-
+    
     def __post_init__(self):
 
         # Process or load documents
@@ -229,13 +230,22 @@ class GNAgent:
 
         logging.info("In set_chroma_db")
 
+        db_path = str(db_path)
+        settings = Settings(
+            is_persistent=True,
+            persist_directory=db_path,
+            anonymized_telemetry=False,
+        )
+
+        
         if Path(db_path).exists():
-            db = Chroma(persist_directory=db_path, embedding_function=embed_model)
+            db = Chroma(persist_directory=db_path, embedding_function=embed_model, client_settings=settings)
             return db
         else:
             db = Chroma(
                 embedding_function=embed_model,
                 persist_directory=db_path,
+                client_settings=settings,
             )
             for i in tqdm(range(0, len(docs), chunk_size)):
                 chunk = docs[i : i + chunk_size]
@@ -704,21 +714,25 @@ class GNAgent:
         return result
 
     async def handler(self, query: str) -> Any:
-        # Main question handler of the system
+        """
+        Main question handler of the system
+        """
         global_result = await self.invoke_globgraph(query)
         first_result = global_result.get("messages")[
             2
         ].content  # get first researcher feedback
+
         end_prompt = global_result.get("messages")
         end_result = end(question=end_prompt)
         end_result = (
             f"\nInitial: {first_result}\n\n Improved: {end_result.get('answer')}"
         )
-        # Extract reasoning from all messages
+        
+        # Extract full reasoning from all messages
         reasoning = " ".join(msg.content for msg in end_prompt)
         return end_result, reasoning
 
-
+    
 async def main(query: str):
     agent = GNAgent(
         corpus_path=CORPUS_PATH,
@@ -738,8 +752,9 @@ async def main(query: str):
         refl_prompt=refl_prompt,
     )
 
-    output = await agent.handler(query)
+    output, reasoning = await agent.handler(query)
     logging.info(f"\n\nSystem feedback: {output}")
+    logging.info(f"\n\nReasoning: {reasoning}")
 
 
 if __name__ == "__main__":
