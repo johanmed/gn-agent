@@ -12,6 +12,7 @@ import warnings
 from typing import Literal
 
 import dspy
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.messages import BaseMessage
 
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -52,6 +53,8 @@ class Plan(dspy.Signature):
     reasoning: str = dspy.OutputField(
         desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
+
+
 # Module to make plan
 plan = dspy.Predict(Plan)
 
@@ -62,6 +65,8 @@ class Tune(dspy.Signature):
     reasoning: str = dspy.OutputField(
         desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
     )
+
+
 # Module to tune reflection
 tune = dspy.Predict(Tune)
 
@@ -74,6 +79,8 @@ class Decide(dspy.Signature):
     reasoning: str = dspy.OutputField(
         desc="Provide a concise explanation of the decision given the input, limited to approximately 50 words."
     )
+
+
 # Module to manage system
 supervise = dspy.Predict(Decide)
 
@@ -81,56 +88,87 @@ supervise = dspy.Predict(Decide)
 class End(dspy.Signature):
     question: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Well formulated final feedback")
+
+
 # Module to wrap up
 end = dspy.Predict(End)
 
 # Specialized modules for researcher
 
+
 class Naturalize(dspy.Signature):
     text: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Natural English sentence")
+
+
 naturalize_pred = dspy.Predict(Naturalize)
+
 
 class Rephrase(dspy.Signature):
     input: list[BaseMessage] = dspy.InputField()
     existing_history: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Reformulated query")
+
+
 rephrase_pred = dspy.Predict(Rephrase)
+
 
 class Analyze(dspy.Signature):
     context: list[BaseMessage] = dspy.InputField()
     existing_history: list[BaseMessage] = dspy.InputField()
     input: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Analysis (≤200 words)")
+
+
 analyze_pred = dspy.Predict(Analyze)
+
 
 class Check(dspy.Signature):
     answer: list[BaseMessage] = dspy.InputField()
     input: list[BaseMessage] = dspy.InputField()
     decision: str = dspy.OutputField(desc='"yes" or "no"')
+
+
 check_pred = dspy.Predict(Check)
+
 
 class Summarize(dspy.Signature):
     full_context: list[BaseMessage] = dspy.InputField()
     summary: str = dspy.OutputField(desc="Bullet-point summary")
+
+
 summarize_pred = dspy.Predict(Summarize)
+
 
 class Synthesize(dspy.Signature):
     input: list[BaseMessage] = dspy.InputField()
     updated_history: list[BaseMessage] = dspy.InputField()
     conclusion: str = dspy.OutputField(desc="Final paragraph")
+
+
 synthesize_pred = dspy.Predict(Synthesize)
+
 
 class Subquery(dspy.Signature):
     query: list[BaseMessage] = dspy.InputField()
-    answer: list[str] = dspy.OutputField(
-        desc="The list of smaller tasks"
-     )
+    answer: list[str] = dspy.OutputField(desc="The list of smaller tasks")
+
+
 subquery = dspy.Predict(Subquery)
+
 
 class Finalize(dspy.Signature):
     query: list[BaseMessage] = dspy.InputField()
     subqueries: list[BaseMessage] = dspy.InputField()
     answers: list[BaseMessage] = dspy.InputField()
     conclusion: str = dspy.OutputField(desc="Final answer")
+
+
 finalize_pred = dspy.Predict(Finalize)
+
+
+class RetrieveSig(dspy.Signature):
+    """Dummy signature for retriever (GEPA-safe)."""
+
+    query: str = dspy.InputField()
+    passages: list[str] = dspy.OutputField()

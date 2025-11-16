@@ -3,16 +3,16 @@
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 naturalize_prompt = SystemMessage(
-            """
+    """
             You are extremely good at naturalizing RDF and inferring meaning.
             Take this new RDF data and make it sound like Plain English.
             If you could chop long names to only meaningful parts, that would great. Remember the focus is on traits and genomic markers.
             You should return a coherent sentence.
             """
-)        
+)
 
 rephrase_prompt = SystemMessage(
-            """
+    """
             You are a skilled query reformulator for optimal document retrieval.
             Using chat history, reformulate this query to make it relevant. If a trait, marker or entity is referred to in the query, make sure to pick it from the previous query in your memory.
             If the trait, marker or entity is new, do not reformulate.
@@ -21,7 +21,7 @@ rephrase_prompt = SystemMessage(
 )
 
 analyze_prompt = SystemMessage(
-            """
+    """
             You are an experienced data analyst who provides accurate and concise feedback. You do extremely well with biological data.
             Answer the question below using provided information.
             Do not modify entities names such as trait and marker. A trait contains generally patterns like GEMMA or GWA. A marker does not contain those patterns.
@@ -30,7 +30,7 @@ analyze_prompt = SystemMessage(
 )
 
 check_prompt = SystemMessage(
-            """
+    """
             You are an expert in evaluating data relevance in the biological field. You do it seriously.
             Assess if the provided answer can help address the query.
             An answer that addresses a subquestion of the query is still relevant.
@@ -38,14 +38,14 @@ check_prompt = SystemMessage(
 )
 
 summarize_prompt = SystemMessage(
-            """
+    """
             You are an excellent and concise summary maker for conversations.
             Do not modify entities names such as trait and marker.
             Give your response in 100 words max. Do not repeat answers."""
-)        
+)
 
 synthesize_prompt = SystemMessage(
-            """
+    """
             You are an expert in synthesizing biological information.
             Ensure the response is insightful, concise, and draws logical inferences where possible.
             Compile the following summarized interactions into a single, well-structured paragraph that answers the original question coherently.
@@ -54,7 +54,7 @@ synthesize_prompt = SystemMessage(
 )
 
 split_prompt = SystemMessage(
-            """
+    """
             You are an expert in genetics. You generate smaller tasks for parallel processing based on the task at hand.
             Split this task and do not make any assumptions (very important).
             If the task has multiple sentences, you must split into subtasks. Return the subtasks. Return strictly a JSON list of strings, nothing else.
@@ -63,7 +63,7 @@ split_prompt = SystemMessage(
 )
 
 finalize_prompt = SystemMessage(
-            """
+    """
             You are an experienced geneticist. You can come up with an elaborated response to a query.
             Given the subqueries and corresponding answers, generate a comprehensive explanation to address the query. The query, subqueries and corresponding answers are below.
             Ensure the response is accurate, insightful and concise. The response should be deeply thought.

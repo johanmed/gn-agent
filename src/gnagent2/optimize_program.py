@@ -2,121 +2,132 @@
 This script optimizes prompts of GeneNetwork Agent using GEPA
 """
 
+import copy
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict
 
 from dspy import GEPA
-from langchain_core.messages import SystemMessage
 
 from all_config import *
-from gnagent_adapter import adapter
+from gnagent_adapter import GNAgentAdapter, config
 
 
-train_set, val_set, test_set = get_dataset()
+def get_dataset(
+    example_path: str,
+    split_ratio: int = 0.7,
+    column_names: list[str] = ["query", "prompt_output", "prompt_text", "reasoning"],
+) -> Any:
+    data = pd.read_csv(example_path, names=column_names)
+    data_dicts = data[["query", "prompt_output", "prompt_text", "reasoning"]].to_dict(
+        orient="records"
+    )
 
-agent = GNAgent(
-    corpus_path=CORPUS_PATH,
-    pcorpus_path=PCORPUS_PATH,
-    db_path=DB_PATH,
-    naturalize_prompt=naturalize_prompt,
-    rephrase_prompt=rephrase_prompt,
-    analyze_prompt=analyze_prompt,
-    check_prompt=check_prompt,
-    summarize_prompt=summarize_prompt,
-    synthesize_prompt=synthesize_prompt,
-    split_prompt=split_prompt,
-    finalize_prompt=finalize_prompt,
-    sup_prompt1=sup_prompt1,
-    sup_prompt2=sup_prompt2,
-    plan_prompt=plan_prompt,
-    refl_prompt=refl_prompt,
-)
+    formatted = [
+        dspy.Example(
+            {
+                "query": x["query"],
+                "prompt_text": x["prompt_text"],
+                "prompt_output": x["prompt_output"],
+                "reasoning": x["reasoning"],
+            }
+        ).with_inputs("query")
+        for x in data_dicts
+    ]
+
+    random.Random(2025).shuffle(formatted)
+    train_set = formatted[: int(split_ratio * len(formatted))]
+    eval_set = formatted[int(split_ratio * len(formatted)) :]
+
+    # Always use 50-50 for validation and test sets
+    val_set = eval_set[: int(0.5 * len(eval_set))]
+    test_set = eval_set[int(0.5 * len(eval_set)) :]
+
+    return train_set, val_set, test_set
 
 
-class GNAgentProgram(dspy.Module):
+def extract_best_prompt(reflection_lm) -> str:
     """
-    Transforms GNAgent to a dspy Program
+    Extract best prompt suggested by GEPA
     """
-    
-    def __init__(self, gn_agent: GNAgent):
-        super().__init__()
-        self.gn_agent = gn_agent
-        self.executor = ThreadPoolExecutor(max_workers=1)
-            
-    def run_handler(self, query):
-        # Runs async handler in clean event loop
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        try:
-            return loop.run_until_complete(self.gn_agent.handler(query))
-        finally:
-            loop.close()
-
-    def forward(self, query) -> dspy.Prediction:
-        answer, reasoning = self.executor.submit(self.run_handler, query).result()
-        return dspy.Prediction(
-            answer=str(answer).strip(), reasoning=str(reasoning).strip()
-        )
-
-
-program = GNAgentProgram(agent)
-
-
-evaluate = dspy.Evaluate(
-    devset=test_set,
-    metric=match_checker,
-    num_threads=1,
-    display_table=True,
-    display_progress=True,
-)
-
-evaluate(program)
+    best_prompt = ""
+    for interaction in reflection_lm.history:
+        messages = interaction.get("messages")
+        if messages is not None:
+            for msg in messages:
+                role = msg.get("role")
+                content = msg.get("content")
+                if role == "system":
+                    new_prompt = content.strip()
+                    if len(new_prompt) > len(best_prompt):
+                        best_prompt = new_prompt
+    return best_prompt
 
 
 @dataclass
-class ProgramOptimization:
+class Optimization:
     """
-    Wraps GEPA optimization of GeneNetwork Agent's prompts using a reflection model
+    Wraps GEPA optimization of any dspy module using a reflection model
     """
 
-    program: Any  # Must be GNAgent adapter
-    reflection_model: Any
+    module: Any
     metric: Any
-    train_set: list[dspy.Example]
-    val_set: list[dspy.Example]
-    output_path: str = "optimized_program.json"
+    input_path: str
+    train_set: list[dspy.Example] = field(init=False)
+    val_set: list[dspy.Example] = field(init=False)
 
-    def gepa_optimize(self) -> Any:
+    def __post_init__(self):
+        train_set, val_set, test_set = get_dataset(self.input_path)
+        val_set = val_set + test_set
+        self.train_set = train_set
+        self.val_set = val_set
+
+    def optimize(self) -> Any:
         optimizer = GEPA(
             metric=self.metric,
-            max_metric_calls=5,
-            num_threads=1,
+            auto="light",
+            num_threads=6,
             track_stats=True,
-            reflection_lm=self.reflection_model,
+            reflection_lm=REFLECTION_MODEL,
             seed=2025,
         )
-        optimized_program = optimizer.compile(
-            self.program,
+        optimized_module = optimizer.compile(
+            self.module,
             trainset=self.train_set,
             valset=self.val_set,
         )
-        optimized_program.save(self.output_path)
 
-        return optimized_program
+        return optimized_module
 
 
 if __name__ == "__main__":
-    if not Path("optimized_program.json").exists():
-        program_run = ProgramOptimization(
-            program=adapter,
-            reflection_model=REFLECTION_MODEL,
-            metric=match_checker_feedback,
-            train_set=train_set,
-            val_set=val_set,
-        )
-        program_run.gepa_optimize()
+    if not Path("optimized_config.json").exists():
+        adapter = GNAgentAdapter(config)
+        optimized_prompts: Dict[str, str] = {}
+
+        for name, predictor in adapter.named_predictors():
+            original = predictor.signature
+            pred = dspy.Predict(original)
+
+            input_path = f"examples/{name}.csv"
+            if Path(input_path).exists():
+                logging.info(f"Proceeding to optimization for {name}")
+                module_run = Optimization(
+                    module=pred,
+                    metric=match_checker_feedback,
+                    input_path=input_path,
+                )
+                optimized_predictor = module_run.optimize()
+                best_prompt = extract_best_prompt(REFLECTION_MODEL)
+                optimized_prompts[name] = best_prompt.strip()
+            else:
+                logging.warning(f"No examples for {name}???")
+
+        new_config = copy.deepcopy(config)
+        new_config["prompts"].update(optimized_prompts)
+        with open("optimized_config.json", "w") as f:
+            f.write(json.dumps(new_config))
+        logging.info("Optimization complete and prompts saved!")
     else:
-        print("optimized_program.json already exists!")
-        optimized_program = program.load("optimized_program.json")
-        evaluate(optimized_program)
+        logging.warning("GNAgent already optimized!")

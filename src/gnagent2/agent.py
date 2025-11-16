@@ -2,10 +2,14 @@
 This script reuses the optimized GeneNetwork Agent to address a query
 """
 
-from optimize_program import program
+import json
 
+from gnagent_adapter import GNAgentAdapter
 from query import query
 
-optimized_program = program.load("optimized_program.json")
+with open("optimized_config.json") as f:
+    read = f.read()
+    optimized_config = json.loads(read)
 
-optimized_program(query=query)
+optimized_agent = GNAgentAdapter(optimized_config)
+optimized_agent(query=query)

@@ -1,8 +1,9 @@
 """
-This modules creates an adapter that wraps an existing GNAgent instance and exposes a serializable config for GEPA.
+This modules creates an adapter that wraps existing GNAgent instance and exposes a serializable config for GEPA
 """
 
 import asyncio
+import copy
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor
@@ -15,10 +16,123 @@ from langchain_core.messages import SystemMessage
 from all_config import *
 
 PROMPT_NAMES = [
-    "naturalize_prompt", "rephrase_prompt", "analyze_prompt", "check_prompt",
-    "summarize_prompt", "synthesize_prompt", "split_prompt", "finalize_prompt",
-    "sup_prompt1", "sup_prompt2", "plan_prompt", "refl_prompt",
+    "naturalize_prompt",
+    "rephrase_prompt",
+    "analyze_prompt",
+    "check_prompt",
+    "summarize_prompt",
+    "synthesize_prompt",
+    "split_prompt",
+    "finalize_prompt",
+    "sup_prompt1",
+    "sup_prompt2",
+    "plan_prompt",
+    "refl_prompt",
 ]
+
+
+class PromptSig(dspy.Signature):
+    query: str = dspy.InputField()
+    prompt_output: str = dspy.OutputField()
+
+
+class GNAgentFullSig(dspy.Signature):
+    query: str = dspy.InputField()
+    answer: str = dspy.OutputField()
+    reasoning: str = dspy.OutputField()
+
+
+class GNAgentAdapter(dspy.Module):
+    def __init__(self, agent_config):
+        super().__init__()
+        self.config = agent_config
+        self.executor = ThreadPoolExecutor(max_workers=1)
+
+        self._predictors = {}
+        for name in PROMPT_NAMES:
+            pred = dspy.Predict(PromptSig)
+            pred.prompt_text = agent_config["prompts"].get(name, "")
+            self._predictors[name] = pred
+            setattr(self, name, pred)
+
+        self.full = dspy.Predict(GNAgentFullSig)
+
+    def _build_agent(self):
+        base = {k: v for k, v in self.config.items() if k != "prompts"}
+        valid_keys = {*PROMPT_NAMES, "corpus_path", "pcorpus_path", "db_path"}
+        base = {k: v for k, v in base.items() if k in valid_keys}
+        for k in {"corpus_path", "pcorpus_path", "db_path"}:
+            if k in base and isinstance(base[k], str):
+                base[k] = Path(base[k])
+
+        prompts = {}
+        for name in PROMPT_NAMES:
+            pred = self._predictors[name]
+            text = getattr(pred, "prompt_text", "")
+            prompts[name] = SystemMessage(content=text)
+
+        if hasattr(self, "_embedder"):
+            base["embedder"] = self._embedder
+        return GNAgent(**base, **prompts)
+
+    @staticmethod
+    def _run_handler(agent, query: str):
+        return asyncio.run(agent.handler(query))
+
+    def forward(self, query: str) -> dspy.Prediction:
+        agent = self._build_agent()
+        answer, reasoning = self.executor.submit(
+            self._run_handler, agent, query
+        ).result()
+        logging.info(f"System feedback: {answer}")
+        return self.full(query=query, answer=str(answer), reasoning=str(reasoning))
+
+    def __call__(self, *args, **kwargs):
+        if args and isinstance(args[0], dspy.Example):
+            return self.forward(query=args[0].query)
+        return self.forward(**kwargs)
+
+    def predictors(self):
+        return list(self._predictors.values())
+
+    def named_predictors(self):
+        return [(n, p) for n, p in self._predictors.items()]
+
+    def reset_copy(self):
+        new = self.__class__.__new__(self.__class__)
+        new.config = copy.deepcopy(self.config)
+        new._predictors = {}
+        for name, pred in self._predictors.items():
+            new_pred = copy.deepcopy(pred)
+            new._predictors[name] = new_pred
+            setattr(new, name, new_pred)
+        new.executor = ThreadPoolExecutor(max_workers=1)
+        new.full = copy.deepcopy(self.full)
+        return new
+
+
+def extract_config(agent) -> Dict[str, Any]:
+    """Convert GNAgent to JSON-serialisable dict"""
+    config: Dict[str, Any] = {}
+    prompt_names = set(PROMPT_NAMES)
+
+    allowed_fields = {"corpus_path", "pcorpus_path", "db_path"}
+    for k, v in agent.__dict__.items():
+        if k not in allowed_fields or k in prompt_names:
+            continue
+        config[k] = str(v) if isinstance(v, Path) else v
+
+    config["prompts"] = {}
+    for name in PROMPT_NAMES:
+        obj = getattr(agent, name, None)
+        if obj is not None:
+            if isinstance(obj, SystemMessage):
+                config["prompts"][name] = obj.content
+            else:
+                config["prompts"][name] = str(obj)
+
+    return config
+
 
 agent = GNAgent(
     corpus_path=CORPUS_PATH,
@@ -37,118 +151,4 @@ agent = GNAgent(
     plan_prompt=plan_prompt,
     refl_prompt=refl_prompt,
 )
-
-def extract_config(agent) -> Dict[str, Any]:
-    """Convert GNAgent to JSON-serialisable dict."""
-    config: Dict[str, Any] = {}
-    prompt_names = set(PROMPT_NAMES)
-
-    allowed_fields = {"corpus_path", "pcorpus_path", "db_path"}
-    for k, v in agent.__dict__.items():
-        if k not in allowed_fields or k in prompt_names:
-            continue
-        config[k] = str(v) if isinstance(v, Path) else v
-
-    config["prompts"] = {}
-    for name in PROMPT_NAMES:
-        obj = getattr(agent, name, None)
-        if obj is not None:
-            if isinstance(obj, SystemMessage):
-                config["prompts"][name] = obj.content
-            else:
-                config["prompts"][name] = str(obj)
-    
-    return config
-
-agent_config = extract_config(agent)
-
-
-class GNAgentSig(dspy.Signature):
-    query: str = dspy.InputField(desc="A natural language query for the GNAgent.")
-    answer: str = dspy.OutputField(desc="Final answer generated by the GNAgent.")
-    reasoning: str = dspy.OutputField(desc="Reasoning process leading to the answer.")
-    
-class GNAgentAdapter(dspy.Module):
-    """
-    DSPy-compatible wrapper for GNAgent.
-    - Stores only JSON-serialisable config
-    - Rebuilds GNAgent on every forward()
-    - Exposes each prompt as a mutable `dspy.Predict`
-    """
-
-    def __init__(self, agent_config: Dict[str, Any]):
-        super().__init__()
-        self.config = agent_config
-        self.executor = ThreadPoolExecutor(max_workers=1)
-
-        # One Predict per prompt
-        self.predictors: Dict[str, dspy.Predict] = {}
-        for name in PROMPT_NAMES:
-            init_text = agent_config["prompts"].get(name, "")
-            pred = dspy.Predict(GNAgentSig)
-            pred.prompt_text = init_text
-            self.predictors[name] = pred
-            setattr(self, name, pred)
-
-    def build_agent(self) -> Any:
-        base = {k: v for k, v in self.config.items() if k != "prompts"}
-
-        valid_keys = {
-            "corpus_path", "pcorpus_path", "db_path",
-            "naturalize_prompt", "rephrase_prompt", "analyze_prompt", "check_prompt",
-            "summarize_prompt", "synthesize_prompt", "split_prompt", "finalize_prompt",
-            "sup_prompt1", "sup_prompt2", "plan_prompt", "refl_prompt"
-        }
-        base = {k: v for k, v in base.items() if k in valid_keys}
-
-        for k in {"corpus_path", "pcorpus_path", "db_path"}:
-            if k in base and isinstance(base[k], str):
-                base[k] = Path(base[k])
-
-        prompts = {}
-        for name in PROMPT_NAMES:
-            pred: dspy.Predict = self.predictors[name]
-            text = getattr(pred, "prompt_text", "")
-            prompts[name] = SystemMessage(content=text)
-
-        return GNAgent(**base, **prompts)
-
-    def run_handler(self, agent, query: str):
-        return asyncio.run(agent.handler(query))
-
-    def forward(self, **kwargs) -> dspy.Prediction:
-        query = kwargs.get("query", "")
-        agent = self.build_agent()
-        answer, reasoning = self.executor.submit(self.run_handler, agent, query).result()
-        return dspy.Prediction(
-            answer=str(answer).strip(),
-            reasoning=str(reasoning).strip() if reasoning else "",
-        )
-
-    def __call__(self, *args, **kwargs) -> dspy.Prediction:
-        if args and isinstance(args[0], dspy.Example):
-            return self.forward(query=args[0].query)
-        return self.forward(**kwargs)
-
-    def named_predictors(self):
-        return [(name, self.predictors[name]) for name in PROMPT_NAMES]
-
-    def save(self, path: str) -> None:
-        data = {
-            "config": self.config,
-            "prompts": {name: pred.prompt_text for name, pred in self.predictors.items()}
-        }
-        Path(path).write_text(json.dumps(data, indent=2), encoding="utf-8")
-
-    @classmethod
-    def load(cls, path: str) -> "GNAgentAdapter":
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
-        adapter = cls(data["config"])
-        for name, text in data["prompts"].items():
-            pred: Predict = adapter.predictors[name]
-            pred.prompt_text = text
-        return adapter
-
-
-# Create adapter for GNagent
-adapter = GNAgentAdapter(agent_config)
+config = extract_config(agent)
