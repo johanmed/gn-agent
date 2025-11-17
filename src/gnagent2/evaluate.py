@@ -5,11 +5,11 @@ This script compares performance of GeneNetwork Agent before and after prompt op
 import json
 
 from all_config import *
-from gnagent_adapter import GNAgentAdapter
+from gnagent_adapter import GNAgentAdapter, config
 from optimize_program import get_dataset
 
 train_set, val_set, test_set = get_dataset(
-    "examples/general.csv", column_names=["query", "output", "reasoning"]
+    "examples/general.csv", column_names=["query", "answer", "reasoning"]
 )
 
 evaluate = dspy.Evaluate(
@@ -20,25 +20,10 @@ evaluate = dspy.Evaluate(
     display_progress=True,
 )
 
-original_agent = agent = GNAgent(
-    corpus_path=CORPUS_PATH,
-    pcorpus_path=PCORPUS_PATH,
-    db_path=DB_PATH,
-    naturalize_prompt=naturalize_prompt,
-    rephrase_prompt=rephrase_prompt,
-    analyze_prompt=analyze_prompt,
-    check_prompt=check_prompt,
-    summarize_prompt=summarize_prompt,
-    synthesize_prompt=synthesize_prompt,
-    split_prompt=split_prompt,
-    finalize_prompt=finalize_prompt,
-    sup_prompt1=sup_prompt1,
-    sup_prompt2=sup_prompt2,
-    plan_prompt=plan_prompt,
-    refl_prompt=refl_prompt,
-)
+original_agent = GNAgentAdapter(config)
 
-evaluate(original_agent)
+original_result = evaluate(original_agent)
+logging.info("Score of original GNAgent: {original_result}")
 
 with open("optimized_config.json") as f:
     read = f.read()
@@ -46,4 +31,5 @@ with open("optimized_config.json") as f:
 
 optimized_agent = GNAgentAdapter(optimized_config)
 
-evaluate(optimized_agent)
+optimized_result = evaluate(optimized_agent)
+logging.info("Score of optimized GNAgent: {optimized_result}")
