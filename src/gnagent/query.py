@@ -1,4 +1,4 @@
-# This module formats the query to pass to the system
+"""This module formats the query to pass to the system"""
 
 
 def make_query_prompt(query: str) -> str:

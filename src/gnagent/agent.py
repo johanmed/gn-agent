@@ -275,7 +275,7 @@ class GNAgent:
 
         logging.info("Rephrasing")
         logging.info(f"Input in rephrase: {state['input']}")
-        
+
         existing_history = (
             "\n".join(state.get("chat_history", []))
             if state.get("chat_history", [])
@@ -505,7 +505,7 @@ class GNAgent:
 
         logging.info("Splitting query")
         logging.info(f"Input in split_query: {query}")
-        
+
         split_prompt = [self.split_prompt.copy(), HumanMessage(query)]
         result = subquery(query=split_prompt)
 

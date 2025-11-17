@@ -16,7 +16,15 @@ from gnagent.config import *
 from gnagent.prompts import *
 from langchain_core.messages import BaseMessage
 
-REFLECTION_MODEL = GENERATIVE_MODEL
+API_KEY = os.getenv("API_KEY")
+
+REFLECTION_MODEL = dspy.LM(
+    "anthropic/claude-haiku-4-5-20251001",
+    api_key=API_KEY,
+    max_tokens=10_000,
+    temperature=0,
+    verbose=False,
+)
 
 
 class Judge(dspy.Signature):

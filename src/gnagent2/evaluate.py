@@ -18,6 +18,7 @@ evaluate = dspy.Evaluate(
     num_threads=1,
     display_table=True,
     display_progress=True,
+    lm=REFLECTION_MODEL,
 )
 
 original_agent = GNAgentAdapter(config)

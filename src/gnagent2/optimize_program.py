@@ -20,14 +20,12 @@ def get_dataset(
     column_names: list[str] = ["query", "prompt_output", "prompt_text", "reasoning"],
 ) -> Any:
     data = pd.read_csv(example_path, names=column_names)
-    data_dicts = data[column_names].to_dict(
-        orient="records"
-    )
+    data_dicts = data[column_names].to_dict(orient="records")
 
     formatted = [
-        dspy.Example(
-            {name: x[name] for name in column_names}
-        ).with_inputs(column_names[0])
+        dspy.Example({name: x[name] for name in column_names}).with_inputs(
+            column_names[0]
+        )
         for x in data_dicts
     ]
 
