@@ -107,7 +107,8 @@ if __name__ == "__main__":
         optimized_prompts: Dict[str, str] = {}
 
         for name, predictor in adapter.named_predictors():
-            original = predictor.signature
+            REFLECTION_MODEL.history = []
+            original = copy.deepcopy(predictor.signature)
             pred = dspy.Predict(original)
 
             input_path = f"examples/{name}.csv"
