@@ -18,13 +18,7 @@ from langchain_core.messages import BaseMessage
 
 API_KEY = os.getenv("API_KEY")
 
-REFLECTION_MODEL = dspy.LM(
-    "anthropic/claude-haiku-4-5-20251001",
-    api_key=API_KEY,
-    max_tokens=10_000,
-    temperature=0,
-    verbose=False,
-)
+REFLECTION_MODEL = GENERATIVE_MODEL
 
 
 class Judge(dspy.Signature):
