@@ -25,8 +25,6 @@ DB_PATH = "/home/johannesm/all_tmp/new_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
-API_KEY = os.getenv("API_KEY")
-
 GENERATIVE_MODEL = dspy.LM(
     model="openai/Qwen/Qwen2.5-7B-Instruct",  # should match shell config
     api_base="http://localhost:7501/v1",
