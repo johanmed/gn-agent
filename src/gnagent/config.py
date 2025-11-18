@@ -12,25 +12,16 @@ import warnings
 from typing import Literal
 
 import dspy
-from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.messages import BaseMessage
 
-warnings.filterwarnings("ignore", category=DeprecationWarning)
-logging.basicConfig(
-    filename="log_agent.txt",
-    filemode="w",
-    level=logging.INFO,
-    format="%(asctime)s %(message)s",
-)
-
-# TODO: Customize path
+# Customize path
 CORPUS_PATH = "/home/johannesm/all_corpus/"
 
-# TODO: Customize path
+# Customize path
 PCORPUS_PATH = "/home/johannesm/all_tmp/new_docs.txt"
 
-# TODO: Customize path
-DB_PATH = "/home/johannesm/all_tmp/full_chroma_db"
+# Customize path
+DB_PATH = "/home/johannesm/all_tmp/new_chroma_db"
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -169,10 +160,3 @@ class Finalize(dspy.Signature):
 
 
 finalize_pred = dspy.Predict(Finalize)
-
-
-class RetrieveSig(dspy.Signature):
-    """Dummy signature for retriever (GEPA-safe)."""
-
-    query: str = dspy.InputField()
-    passages: list[str] = dspy.OutputField()

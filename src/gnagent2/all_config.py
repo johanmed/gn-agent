@@ -11,7 +11,7 @@ from typing import Any, Literal
 
 import dspy
 import pandas as pd
-from gnagent.agent import GNAgent, HybridRetriever
+from gnagent.agent import GNAgent
 from gnagent.config import *
 from gnagent.prompts import *
 from langchain_core.messages import BaseMessage

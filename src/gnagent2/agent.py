@@ -3,6 +3,7 @@ This script reuses the optimized GeneNetwork Agent to address a query
 """
 
 import json
+import warnings
 
 from gnagent_adapter import GNAgentAdapter
 from query import query
