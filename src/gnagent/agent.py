@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import uuid
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -24,6 +25,8 @@ from chromadb.config import Settings
 from gnagent.config import *
 from gnagent.prompts import *
 from gnagent.query import query
+from langchain.retrievers.ensemble import EnsembleRetriever
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -35,6 +38,15 @@ from pydantic import BaseModel
 from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
+
+warnings.filterwarnings("ignore")
+
+logging.basicConfig(
+    filename="log_agent.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+)
 
 
 class AgentState(BaseModel):
@@ -58,81 +70,6 @@ class SubagentState(TypedDict):
     context: list[str]
     answer: str
     should_continue: str
-
-
-class HybridRetriever(dspy.Module):
-    """
-    DSPy-compatible hybrid retriever: BM25 (keyword) + Chroma/HuggingFace (semantic)
-    """
-
-    def __init__(
-        self,
-        docs: list[str],
-        db_path: str,
-        embed_model: str,
-        alpha: float = 0.5,
-        k: int = 10,
-    ):
-        super().__init__()
-        self.alpha = alpha
-        self.k = k
-
-        self.embed_model = HuggingFaceEmbeddings(
-            model_name=embed_model,
-            model_kwargs={"device": "cpu"},
-        )
-
-        self.db_path = Path(db_path)
-        self._setup_chroma(docs)
-
-        self.bm25 = BM25Retriever.from_texts(texts=docs, k=k)
-
-        self.sig = dspy.Predict(RetrieveSig)
-
-    def _setup_chroma(self, docs: list[str]):
-        if not self.db_path.exists():
-            chroma = Chroma(
-                collection_name="gn_corpus",
-                embedding_function=self.embed_model,
-                persist_directory=str(self.db_path),
-            )
-            metadatas = [{"source": f"Chroma doc {i}"} for i in range(len(docs))]
-            chroma.add_texts(texts=docs, metadatas=metadatas)
-            chroma.persist()
-
-        self.semantic = Chroma(
-            collection_name="gn_corpus",
-            embedding_function=self.embed_model,
-            persist_directory=str(self.db_path),
-        ).as_retriever(search_kwargs={"k": self.k})
-
-    def _hybrid_search(self, query: str) -> list[Document]:
-        """Core hybrid logic"""
-        semantic_docs = self.semantic.invoke(query)
-        bm25_docs = self.bm25.invoke(query)
-        bm25_docs = [
-            Document(
-                page_content=doc.page_content,
-                metadata=doc.metadata | {"source": f"BM25 doc {i}"},
-            )
-            for i, doc in enumerate(bm25_docs)
-        ]
-        all_docs = {doc.metadata["source"]: doc for doc in semantic_docs + bm25_docs}
-        scores: dict[str, float] = {}
-        for rank, doc in enumerate(semantic_docs, 1):
-            src = doc.metadata["source"]
-            scores[src] = scores.get(src, 0) + self.alpha / rank
-        for rank, doc in enumerate(bm25_docs, 1):
-            src = doc.metadata["source"]
-            scores[src] = scores.get(src, 0) + (1 - self.alpha) / rank
-
-        ranked = sorted(scores, key=scores.get, reverse=True)[: self.k]
-        return [all_docs[src] for src in ranked if src in all_docs]
-
-    def forward(self, query: str) -> dspy.Prediction:
-        """DSPy entry point"""
-        docs = self._hybrid_search(query)
-        return dspy.Prediction(passages=docs)
 
 
 @dataclass
@@ -170,28 +107,51 @@ class GNAgent:
     plan_prompt: Any
     refl_prompt: Any
     max_global_visits: int = 5
+    chroma_db: Any = field(init=False)
     docs: list = field(init=False)
-    retriever: Any = field(init=False)
+    ensemble_retriever: Any = field(init=False)
     memory: Any = field(init=False)
     subgraph: Any = field(init=False)
 
     def __post_init__(self):
 
-        if not Path(self.pcorpus_path).exists():
+        # Process or load documents
+        if not Path(self.pcorpus_path).exists():  # first time execution
             self.docs = self.corpus_to_docs(self.corpus_path)
             with open(self.pcorpus_path, "w") as file:
                 file.write(json.dumps(self.docs))
-        else:
+        else:  # subsequent executions
             with open(self.pcorpus_path) as file:
                 data = file.read()
                 self.docs = json.loads(data)
 
-        self.retriever = HybridRetriever(
+        # Create or get embedding database
+        self.chroma_db = self.set_chroma_db(
             docs=self.docs,
+            embed_model=HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL,
+                model_kwargs={"trust_remote_code": True, "device": "cpu"},
+            ),  # could use gpu instead of cpu with more RAM
             db_path=self.db_path,
-            embed_model=EMBED_MODEL,
         )
 
+        # Init the ensemble retriever
+        metadatas = [{"source": f"Document {ind + 1}"} for ind in range(len(self.docs))]
+        bm25_retriever = BM25Retriever.from_texts(
+            texts=self.docs,
+            metadatas=metadatas,
+            k=10,  # might need finetuning
+        )
+        self.ensemble_retriever = EnsembleRetriever(
+            retrievers=[
+                self.chroma_db.as_retriever(
+                    search_kwargs={"k": 10}
+                ),  # might need finetuning
+                bm25_retriever,
+            ],
+            weights=[0.7, 0.3],  # might need finetuning
+            c=30,
+        )
         self.memory = MemorySaver()
         self.subgraph = self.initialize_subgraph()
 
@@ -216,7 +176,7 @@ class GNAgent:
         if not Path(corpus_path).exists():
             sys.exit(1)
 
-        # Read documents from a single preprocessed file in corpus path
+        # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
             aggregated = f.read()
             collection = json.loads(aggregated)  # dictionary with key being RDF subject
@@ -254,7 +214,7 @@ class GNAgent:
             response = naturalize_pred(input=data)
             return response.get("answer")
 
-        with ThreadPoolExecutor(max_workers=100) as ex:
+        with ThreadPoolExecutor(max_workers=100) as ex:  # Explain magic number
             for answer in tqdm(ex.map(naturalize, prompts), total=len(prompts)):
                 docs.append(answer)
             # Save on disk for quick turnaround
@@ -262,6 +222,57 @@ class GNAgent:
                 f.write(json.dumps(docs))
 
         return docs
+
+    def set_chroma_db(
+        self, docs: list, embed_model: Any, db_path: str, chunk_size: int = 1
+    ) -> Any:  # small chunk_size for atomicity and memory management
+        """Initializes or reads embedding database
+
+        Args:
+            docs: processed document chunks
+            embed_model: model for embedding
+            db_path: path to database
+            chunk_size: number of chunks to process by iteration
+
+        Returns:
+            database object for embedding
+        """
+
+        logging.info("In set_chroma_db")
+
+        db_path = str(db_path)
+        settings = Settings(
+            is_persistent=True,
+            persist_directory=db_path,
+            anonymized_telemetry=False,
+        )
+
+        if Path(db_path).exists():
+            db = Chroma(
+                persist_directory=db_path,
+                embedding_function=embed_model,
+                client_settings=settings,
+            )
+            return db
+        else:
+            db = Chroma(
+                embedding_function=embed_model,
+                persist_directory=db_path,
+                client_settings=settings,
+            )
+            for i in tqdm(range(0, len(docs), chunk_size)):
+                chunk = docs[i : i + chunk_size]
+                metadatas = [
+                    {"source": f"Document {ind + 1}"}
+                    for ind in range(i, i + len(chunk))
+                ]
+                db.add_texts(
+                    texts=chunk,
+                    metadatas=metadatas,
+                )
+
+            db.persist()
+            return db
 
     def rephrase(self, state: SubagentState) -> dict:
         """Rephrases a query to use information in memory
@@ -274,8 +285,7 @@ class GNAgent:
         """
 
         logging.info("Rephrasing")
-        logging.info(f"Input in rephrase: {state['input']}")
-        
+
         existing_history = (
             "\n".join(state.get("chat_history", []))
             if state.get("chat_history", [])
@@ -315,18 +325,17 @@ class GNAgent:
 
         logging.info(f"Input in retriever: {state['input']}")
 
-        result = self.retriever(state["input"])
-        retrieved_docs: list[Document] = result.get("passages")
+        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get(
+            "context", []
+        )
 
-        combined_docs = retrieved_docs + state.get("context", [])
-
-        logging.info(f"Retrieved docs in retrieve: {combined_docs}")
+        logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
         should_continue = "analyze"
 
         return {
             "input": state["input"],
-            "context": combined_docs,
+            "context": retrieved_docs,
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
             "answer": state.get("answer", ""),
@@ -496,6 +505,7 @@ class GNAgent:
         return subgraph
 
     async def invoke_subgraph(self, question: str, thread_id: str) -> Any:
+
         config = {"configurable": {"thread_id": thread_id}}  # conversation thread
         result = await self.subgraph.ainvoke({"input": question}, config)
 
@@ -504,8 +514,7 @@ class GNAgent:
     def split_query(self, query: str) -> list[str]:
 
         logging.info("Splitting query")
-        logging.info(f"Input in split_query: {query}")
-        
+
         split_prompt = [self.split_prompt.copy(), HumanMessage(query)]
         result = subquery(query=split_prompt)
 
@@ -527,8 +536,6 @@ class GNAgent:
         """
 
         logging.info("Finalizing")
-        input = f"Query: {query}\nSubqueries: {subqueries}\nAnswers: {answers}"
-        logging.info(f"Input in finalize: {input}")
 
         finalize_prompt = [self.finalize_prompt.copy(), HumanMessage(query)]
         result = finalize_pred(
@@ -549,7 +556,7 @@ class GNAgent:
         return final_answer
 
     def run_subtask(self, subquery: str, research_thread_id: str) -> dict:
-        """Handle a subquery"""
+        # Handle a subquery
         result = asyncio.run(self.invoke_subgraph(subquery, research_thread_id))
         return result
 
@@ -673,7 +680,6 @@ class GNAgent:
             *state.messages,
             ("system", self.sup_prompt2),
         ]
-        logging.info(f"Input in supervisor: {messages}")
 
         if len(messages) > self.max_global_visits:
             return {"next": "end"}
@@ -721,7 +727,9 @@ class GNAgent:
         return result
 
     async def handler(self, query: str) -> Any:
-        """Main question handler of the system"""
+        """
+        Main question handler of the system
+        """
         global_result = await self.invoke_globgraph(query)
         first_result = global_result.get("messages")[
             2
@@ -732,10 +740,7 @@ class GNAgent:
         end_result = (
             f"\nInitial: {first_result}\n\n Improved: {end_result.get('answer')}"
         )
-
-        # Extract full reasoning from all messages
-        reasoning = " ".join(msg.content for msg in end_prompt)
-        return end_result, reasoning
+        return end_result
 
 
 async def main(query: str):
@@ -759,7 +764,6 @@ async def main(query: str):
 
     output, reasoning = await agent.handler(query)
     logging.info(f"\n\nSystem feedback: {output}")
-    logging.info(f"\n\nReasoning: {reasoning}")
 
 
 if __name__ == "__main__":

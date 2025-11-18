@@ -1,4 +1,4 @@
-# This module formats the query to pass to the system
+"""This module formats the query to pass to the system"""
 
 
 def make_query_prompt(query: str) -> str:
@@ -8,6 +8,6 @@ def make_query_prompt(query: str) -> str:
 
 
 # question = input("We are ready for you!\n Please ask your question: ")
-question = "Identify pairs of traits and markers with lod score > 3 at D10Mit28. Extract descriptions of traits."
+question = "Find all behavioral traits. Analyze their lod scores. Select only traits having a lod score greater or equal than 4 in the previous list of traits"
 
 query = make_query_prompt(query=question)

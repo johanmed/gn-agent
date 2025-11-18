@@ -39,7 +39,6 @@ class PromptSig(dspy.Signature):
 class GNAgentFullSig(dspy.Signature):
     query: str = dspy.InputField()
     answer: str = dspy.OutputField()
-    reasoning: str = dspy.OutputField()
 
 
 class GNAgentAdapter(dspy.Module):
@@ -81,11 +80,9 @@ class GNAgentAdapter(dspy.Module):
 
     def forward(self, query: str) -> dspy.Prediction:
         agent = self._build_agent()
-        answer, reasoning = self.executor.submit(
-            self._run_handler, agent, query
-        ).result()
+        answer = self.executor.submit(self._run_handler, agent, query).result()
         logging.info(f"System feedback: {answer}")
-        return self.full(query=query, answer=str(answer), reasoning=str(reasoning))
+        return self.full(query=query, answer=str(answer))
 
     def __call__(self, *args, **kwargs):
         if args and isinstance(args[0], dspy.Example):

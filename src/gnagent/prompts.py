@@ -1,4 +1,4 @@
-# This module instantiates all system prompts
+"""This module instantiates all system prompts"""
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
