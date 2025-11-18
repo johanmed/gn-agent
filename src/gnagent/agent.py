@@ -762,7 +762,7 @@ async def main(query: str):
         refl_prompt=refl_prompt,
     )
 
-    output, reasoning = await agent.handler(query)
+    output = await agent.handler(query)
     logging.info(f"\n\nSystem feedback: {output}")
 
 
