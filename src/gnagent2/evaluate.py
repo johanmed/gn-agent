@@ -24,7 +24,6 @@ evaluate = dspy.Evaluate(
 
 original_agent = GNAgentAdapter(config)
 original_result = evaluate(original_agent)
-logging.info(f"Score of original GNAgent: {original_result}")
 
 with open("optimized_config.json") as f:
     read = f.read()
@@ -32,4 +31,3 @@ with open("optimized_config.json") as f:
 
 final_agent = GNAgentAdapter(optimized_config)
 optimized_result = evaluate(final_agent)
-logging.info(f"Score of optimized GNAgent: {optimized_result}")
