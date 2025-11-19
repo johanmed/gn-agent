@@ -358,11 +358,9 @@ class GNAgent:
             if state.get("context", [])
             else ""
         )
-
-        truncated_context = str(context)[
-            :25_000
-        ]  # prehandle context length of large documents given model limit of 32_000
-
+        
+        truncated_context = str(context)[:180_000]
+        
         existing_history = (
             "\n".join(state.get("chat_history", []))
             if state.get("chat_history", [])
