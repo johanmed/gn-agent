@@ -18,7 +18,7 @@ evaluate = dspy.Evaluate(
     num_threads=1,
     display_table=True,
     display_progress=True,
-    lm=REFLECTION_MODEL,
+    lm=GENERATIVE_MODEL,
 )
 
 
@@ -46,7 +46,7 @@ optimized_agent = GNAgent(
     plan_prompt=optimized_config["prompts"]["plan_prompt"],
     refl_prompt=optimized_config["prompts"]["refl_prompt"],
 )
-final_config = extract_config(optimized_agent)
-final_agent = GNAgentAdapter(final_config)
+#final_config = extract_config(optimized_agent)
+final_agent = GNAgentAdapter(optimized_config)
 
 optimized_result = evaluate(final_agent)
