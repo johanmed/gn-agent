@@ -77,7 +77,7 @@ def match_checker(
     ) / 5
     logging.info(f"Score: {score}")
 
-    return 1 if score >= 1 else 0
+    return 1 if score >= 0.9 else 0
 
 
 def match_checker_feedback(

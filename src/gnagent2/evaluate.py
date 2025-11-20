@@ -16,7 +16,7 @@ evaluate = dspy.Evaluate(
     devset=test_set,
     metric=match_checker,
     num_threads=1,
-    display_table=True,
+    display_table=False,
     display_progress=True,
     lm=GENERATIVE_MODEL,
 )
@@ -24,6 +24,7 @@ evaluate = dspy.Evaluate(
 
 original_agent = GNAgentAdapter(config)
 original_result = evaluate(original_agent)
+
 
 with open("optimized_config.json") as f:
     read = f.read()
@@ -46,7 +47,7 @@ optimized_agent = GNAgent(
     plan_prompt=optimized_config["prompts"]["plan_prompt"],
     refl_prompt=optimized_config["prompts"]["refl_prompt"],
 )
-#final_config = extract_config(optimized_agent)
-final_agent = GNAgentAdapter(optimized_config)
+final_config = extract_config(optimized_agent)
+final_agent = GNAgentAdapter(final_config)
 
 optimized_result = evaluate(final_agent)

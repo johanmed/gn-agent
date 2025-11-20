@@ -20,8 +20,8 @@ def get_dataset(
     column_names: list[str] = ["query", "prompt_output", "prompt_text", "reasoning"],
 ) -> Any:
     data = pd.read_csv(
-        example_path, names=column_names, nrows=10
-    )  # need to remove limit
+        example_path, names=column_names,
+    )
     data_dicts = data[column_names].to_dict(orient="records")
 
     formatted = [
