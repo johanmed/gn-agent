@@ -1,5 +1,5 @@
 """
-This script tests the GeneNetwork Agent system
+This script tests the configurations of GeneNetwork Agent
 """
 
 from gnagent.agent import GNAgent
