@@ -24,7 +24,6 @@ from typing import Any, Literal
 from chromadb.config import Settings
 from gnagent.config import *
 from gnagent.prompts import *
-from gnagent.query import query
 from langchain.retrievers.ensemble import EnsembleRetriever
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
@@ -767,4 +766,4 @@ async def main(query: str):
 
 
 if __name__ == "__main__":
-    asyncio.run(main(query))
+    asyncio.run(main(QUERY))
