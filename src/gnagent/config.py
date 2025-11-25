@@ -2,8 +2,7 @@
 This module sets up configurations to run agent
 It provides different constructs to interact with the LLM
 Embedding model = Qwen/Qwen3-Embedding-0.6B
-Generative model = Any Claude model
-Note: Need to customize paths
+Generative model = Qwen/Qwen2.5-7B-Instruct
 """
 
 import logging
@@ -14,14 +13,11 @@ from typing import Literal
 import dspy
 from langchain_core.messages import BaseMessage
 
-# Customize path
-CORPUS_PATH = "/home/johannesm/all_corpus/"
+CORPUS_PATH = os.getenv("CORPUS_PATH")
 
-# Customize path
-PCORPUS_PATH = "/home/johannesm/all_tmp/new_docs.txt"
+PCORPUS_PATH = os.getenv("PCORPUS_PATH")
 
-# Customize path
-DB_PATH = "/home/johannesm/all_tmp/new_chroma_db"
+DB_PATH = os.getenv("DB_PATH")
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -44,7 +40,7 @@ class Plan(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="The plan to solve the task")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
+        desc="Concise explanation of the decision in 50 words"
     )
 
 
@@ -56,7 +52,7 @@ class Tune(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="The new questions")
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation of the thought process for the input, limited to approximately 50 words."
+        desc="Concise explanation of the decision in 50 words"
     )
 
 
@@ -70,7 +66,7 @@ class Decide(dspy.Signature):
         desc="The next step to take"
     )
     reasoning: str = dspy.OutputField(
-        desc="Provide a concise explanation of the decision given the input, limited to approximately 50 words."
+        desc="Concise explanation of the decision in 50 words"
     )
 
 
