@@ -60,7 +60,7 @@ tune = dspy.Predict(Tune)
 
 class Decide(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
-    next: Literal["researcher", "reflector", "end"] = dspy.OutputField(
+    next_decision: Literal["researcher", "reflector", "end"] = dspy.OutputField(
         desc="The next step to take"
     )
     reasoning: str = dspy.OutputField(
@@ -86,7 +86,7 @@ class Naturalize(dspy.Signature):
 naturalize_pred = dspy.Predict(Naturalize)
 
 class Rephrase(dspy.Signature):
-    input: list[BaseMessage] = dspy.InputField()
+    input_text: list[BaseMessage] = dspy.InputField()
     existing_history: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Reformulated query")
 
@@ -95,14 +95,14 @@ rephrase_pred = dspy.Predict(Rephrase)
 class Analyze(dspy.Signature):
     context: list[BaseMessage] = dspy.InputField()
     existing_history: list[BaseMessage] = dspy.InputField()
-    input: list[BaseMessage] = dspy.InputField()
+    input_text: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="Analysis (≤200 words)")
 
 analyze_pred = dspy.Predict(Analyze)
 
 class Check(dspy.Signature):
     answer: list[BaseMessage] = dspy.InputField()
-    input: list[BaseMessage] = dspy.InputField()
+    input_text: list[BaseMessage] = dspy.InputField()
     decision: str = dspy.OutputField(desc='"yes" or "no"')
 
 check_pred = dspy.Predict(Check)
@@ -114,7 +114,7 @@ class Summarize(dspy.Signature):
 summarize_pred = dspy.Predict(Summarize)
 
 class Synthesize(dspy.Signature):
-    input: list[BaseMessage] = dspy.InputField()
+    input_text: list[BaseMessage] = dspy.InputField()
     updated_history: list[BaseMessage] = dspy.InputField()
     conclusion: str = dspy.OutputField(desc="Final paragraph")
 

@@ -55,7 +55,7 @@ class AgentState(BaseModel):
     """
 
     messages: Annotated[list[BaseMessage], add_messages]
-    next: Literal["researcher", "planner", "reflector", "end"]
+    next_decision: Literal["researcher", "planner", "reflector", "end"]
 
 
 class SubagentState(TypedDict):
@@ -64,7 +64,7 @@ class SubagentState(TypedDict):
     Avails 05 attributes to allow communication between its subcomponents
     """
 
-    input: str
+    input_text: str
     chat_history: list[str]
     context: list[str]
     answer: str
@@ -210,7 +210,7 @@ class GNAgent:
                 logic text capturing RDF meaning
             """
 
-            response = naturalize_pred(input=data)
+            response = naturalize_pred(input_text=data)
             return response.get("answer")
 
         with ThreadPoolExecutor(max_workers=100) as ex:  # Explain magic number
@@ -291,10 +291,10 @@ class GNAgent:
             else "No prior conversation."
         )
 
-        rephrase_prompt = [self.rephrase_prompt.copy(), HumanMessage(state["input"])]
+        rephrase_prompt = [self.rephrase_prompt.copy(), HumanMessage(state["input_text"])]
 
         response = rephrase_pred(
-            input=rephrase_prompt, existing_history=[HumanMessage(existing_history)]
+            input_text=rephrase_prompt, existing_history=[HumanMessage(existing_history)]
         )
 
         logging.info(f"Response in rephrase: {response}")
@@ -303,7 +303,7 @@ class GNAgent:
         should_continue = "retrieve"
 
         return {
-            "input": response,
+            "input_text": response,
             "answer": state.get("answer", ""),
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
@@ -322,9 +322,9 @@ class GNAgent:
 
         logging.info("Retrieving")
 
-        logging.info(f"Input in retriever: {state['input']}")
+        logging.info(f"Input in retriever: {state['input_text']}")
 
-        retrieved_docs = self.ensemble_retriever.invoke(state["input"]) + state.get(
+        retrieved_docs = self.ensemble_retriever.invoke(state["input_text"]) + state.get(
             "context", []
         )
 
@@ -333,7 +333,7 @@ class GNAgent:
         should_continue = "analyze"
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "context": retrieved_docs,
             "should_continue": should_continue,
             "chat_history": state.get("chat_history", []),
@@ -368,10 +368,10 @@ class GNAgent:
             else ""
         )
 
-        analyze_prompt = [self.analyze_prompt.copy(), HumanMessage(state["input"])]
+        analyze_prompt = [self.analyze_prompt.copy(), HumanMessage(state["input_text"])]
 
         response = analyze_pred(
-            input=analyze_prompt,
+            input_text=analyze_prompt,
             context=[HumanMessage(truncated_context)],
             existing_history=[HumanMessage(existing_history)],
         )
@@ -382,7 +382,7 @@ class GNAgent:
         should_continue = "check_relevance"
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "answer": response,
             "should_continue": should_continue,
             "context": state.get("context", []),
@@ -403,9 +403,9 @@ class GNAgent:
 
         answer = state["answer"]
 
-        check_prompt = [self.check_prompt.copy(), HumanMessage(state["input"])]
+        check_prompt = [self.check_prompt.copy(), HumanMessage(state["input_text"])]
 
-        assessment = check_pred(input=check_prompt, answer=[HumanMessage(answer)])
+        assessment = check_pred(input_text=check_prompt, answer=[HumanMessage(answer)])
         logging.info(f"Assessment in checking relevance: {assessment}")
 
         if assessment.get("decision") == "yes":
@@ -416,7 +416,7 @@ class GNAgent:
                 provide a valuable feedback due to lack of relevant data."
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "context": state.get("context", []),
             "answer": answer,
             "chat_history": state.get("chat_history", []),
@@ -436,7 +436,7 @@ class GNAgent:
         logging.info("Summarizing")
 
         current_interaction = f"""
-            User: {state["input"]}\nAssistant: {state["answer"]}"""
+            User: {state["input_text"]}\nAssistant: {state["answer"]}"""
 
         summarize_prompt = [
             self.summarize_prompt.copy(),
@@ -447,7 +447,7 @@ class GNAgent:
         summary = summary.get("summary")
 
         if not summary or not isinstance(summary, str) or summary.strip() == "":
-            summary = f"- {state['input']} - No valid answer generated"
+            summary = f"- {state['input_text']} - No valid answer generated"
 
         existing_history = state.get("chat_history", [])
 
@@ -460,10 +460,10 @@ class GNAgent:
         else:
             synthesize_prompt = [
                 self.synthesize_prompt.copy(),
-                HumanMessage(state["input"]),
+                HumanMessage(state["input_text"]),
             ]
             result = synthesize_pred(
-                input=synthesize_prompt, updated_history=[HumanMessage(updated_history)]
+                input_text=synthesize_prompt, updated_history=[HumanMessage(updated_history)]
             )
             logging.info(f"Result in summarize: {result}")
 
@@ -476,7 +476,7 @@ class GNAgent:
             )
 
         return {
-            "input": state["input"],
+            "input_text": state["input_text"],
             "answer": final_answer,
             "context": state.get("context", []),
             "chat_history": updated_history,
@@ -506,7 +506,7 @@ class GNAgent:
     async def invoke_subgraph(self, question: str, thread_id: str) -> Any:
 
         config = {"configurable": {"thread_id": thread_id}}  # conversation thread
-        result = await self.subgraph.ainvoke({"input": question}, config)
+        result = await self.subgraph.ainvoke({"input_text": question}, config)
 
         return result
 
@@ -603,12 +603,12 @@ class GNAgent:
         logging.info("Researching")
         start = time.time()
         if len(state.messages) < 3:
-            input = state.messages[0]
+            input_text = state.messages[0]
         else:
-            input = state.messages[-1]
-        input = input.content
-        logging.info(f"Input in researcher: {input}")
-        result = self.manage_subtasks(input)
+            input_text = state.messages[-1]
+        input_text = input_text.content
+        logging.info(f"Input in researcher: {input_text}")
+        result = self.manage_subtasks(input_text)
         end = time.time()
         logging.info(f"Result in researcher: {result}")
 
@@ -627,9 +627,9 @@ class GNAgent:
         """
 
         logging.info("Planning")
-        input = [self.plan_prompt] + state.messages
-        logging.info(f"Input in planner: {input}")
-        result = plan(background=input)
+        input_text = [self.plan_prompt] + state.messages
+        logging.info(f"Input in planner: {input_text}")
+        result = plan(background=input_text)
         logging.info(f"Result in planner: {result}")
         answer = result.get("answer")
         return {
@@ -681,14 +681,14 @@ class GNAgent:
         ]
 
         if len(messages) > self.max_global_visits:
-            return {"next": "end"}
+            return {"next_decision": "end"}
 
         result = supervise(background=messages)
         logging.info(f"Result in supervisor: {result}")
-        next = result.get("next")
+        next_decision = result.get("next_decision")
 
         return {
-            "next": next,
+            "next_decision": next_decision,
         }
 
     def initialize_globgraph(self) -> Any:
@@ -703,7 +703,7 @@ class GNAgent:
         graph_builder.add_edge("reflector", "researcher")
         graph_builder.add_conditional_edges(
             "supervisor",
-            lambda state: state.next,
+            lambda state: state.next_decision,
             {
                 "reflector": "reflector",
                 "researcher": "researcher",
@@ -718,7 +718,7 @@ class GNAgent:
         graph = self.initialize_globgraph()
         initial_state = {
             "messages": [("human", query)],
-            "next": "planner",  # always plan first
+            "next_decision": "planner",  # always plan first
         }
 
         result = await graph.ainvoke(initial_state)
