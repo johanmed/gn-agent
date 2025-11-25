@@ -760,10 +760,9 @@ async def main(query: str):
         plan_prompt=plan_prompt,
         refl_prompt=refl_prompt,
     )
-
     output = await agent.handler(query)
     logging.info(f"\n\nSystem feedback: {output}")
-
+    return output
 
 if __name__ == "__main__":
     asyncio.run(main(QUERY))
