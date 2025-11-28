@@ -10,6 +10,7 @@ import warnings
 from typing import Literal
 
 import dspy
+import torch
 from langchain_core.messages import BaseMessage
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")
@@ -20,10 +21,16 @@ DB_PATH = os.getenv("DB_PATH")
 
 QUERY = os.getenv("QUERY")
 
+SEED = os.getenv("SEED")
+
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
 MODEL_TYPE = os.getenv("MODEL_TYPE")
 
+torch.manual_seed(SEED)
+
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(SEED)
 
 if int(MODEL_TYPE) == 0:
     GENERATIVE_MODEL = dspy.LM(
