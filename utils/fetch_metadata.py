@@ -28,16 +28,10 @@ def endpoint_to_data(
         PREFIX pubmed: <http://rdf.ncbi.nlm.nih.gov/pubmed/> 
 
         CONSTRUCT {{
-        ?traitid ?property1 ?value_property1 .
-        ?parent ?property2 ?value_property2 .
+        ?s ?p ?o .
         }}
         WHERE {{
-        ?traitid gnt:traitId ?trait .
-        ?traitid ?property1 ?value_property1 .
-        OPTIONAL {{
-        ?parent ?property ?traitid .
-        ?parent ?property2 ?value_property2 .
-        }}
+        ?s ?p ?o .
         }}
         OFFSET {offset}
         LIMIT {limit}
