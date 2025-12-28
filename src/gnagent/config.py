@@ -94,7 +94,7 @@ tune = dspy.Predict(Tune)
 
 class Decide(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
-    next_decision: Literal["researcher", "reflector", "end"] = dspy.OutputField(
+    next_decision: Literal["researcher", "reflector", "expert", "end"] = dspy.OutputField(
         desc="The next step to take"
     )
     reasoning: str = dspy.OutputField(
@@ -108,11 +108,24 @@ supervise = dspy.Predict(Decide)
 
 class End(dspy.Signature):
     question: list[BaseMessage] = dspy.InputField()
-    answer: str = dspy.OutputField(desc="Well formulated final feedback")
+    answer: str = dspy.OutputField(desc="Detailed and comprehensive final feedback combining all AI outputs in the list of exchanged messages")
 
 
 # Module to wrap up
 end = dspy.Predict(End)
+
+
+class Extract(dspy.Signature):
+    background: list[BaseMessage] = dspy.InputField()
+    answer: str = dspy.OutputField(desc="The answer to the question")
+    reasoning: str = dspy.OutputField(
+        desc="Concise explanation of the decision in 50 words"
+    )
+
+
+# Module to extract knowledge from model itself
+extract = dspy.Predict(Extract)
+
 
 # Specialized modules for researcher
 

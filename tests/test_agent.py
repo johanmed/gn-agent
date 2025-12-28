@@ -22,6 +22,7 @@ def test_agent():
         sup_prompt2="sup_prompt2",
         plan_prompt="plan_prompt",
         refl_prompt="refl_prompt",
+        expert_prompt="expert_prompt",
     )
     assert (
         agent.corpus_path == "CORPUS_PATH"

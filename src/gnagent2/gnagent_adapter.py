@@ -28,6 +28,7 @@ PROMPT_NAMES = [
     "sup_prompt2",
     "plan_prompt",
     "refl_prompt",
+    "expert_prompt",
 ]
 
 
@@ -147,5 +148,6 @@ agent = GNAgent(
     sup_prompt2=sup_prompt2,
     plan_prompt=plan_prompt,
     refl_prompt=refl_prompt,
+    expert_prompt=expert_prompt,
 )
 config = extract_config(agent)

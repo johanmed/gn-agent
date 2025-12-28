@@ -46,6 +46,7 @@ optimized_agent = GNAgent(
     sup_prompt2=optimized_config["prompts"]["sup_prompt2"],
     plan_prompt=optimized_config["prompts"]["plan_prompt"],
     refl_prompt=optimized_config["prompts"]["refl_prompt"],
+    expert_prompt=optimized_config["prompts"]["expert_prompt"],
 )
 final_config = extract_config(optimized_agent)
 final_agent = GNAgentAdapter(final_config)
