@@ -10,6 +10,7 @@ def test_agent():
         corpus_path="CORPUS_PATH",
         pcorpus_path="PCORPUS_PATH",
         db_path="DB_PATH",
+        ext_db_path="EXT_DB_PATH",
         naturalize_prompt="naturalize_prompt",
         rephrase_prompt="rephrase_prompt",
         analyze_prompt="analyze_prompt",

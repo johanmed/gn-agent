@@ -16,6 +16,8 @@ from gnagent.config import *
 from gnagent.prompts import *
 from langchain_core.messages import BaseMessage
 
+
+MODEL_NAME = os.getenv("MODEL_NAME")
 API_KEY = os.getenv("API_KEY")
 
 REFLECTION_MODEL = dspy.LM(

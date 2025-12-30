@@ -14,14 +14,29 @@ import torch
 from langchain_core.messages import BaseMessage
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")
+if CORPUS_PATH is None:
+    raise ValueError("CORPUS_PATH must be specified")
 
 PCORPUS_PATH = os.getenv("PCORPUS_PATH")
+if PCORPUS_PATH is None:
+    raise ValueError("PCORPUS_PATH must be specified")
 
 DB_PATH = os.getenv("DB_PATH")
+if DB_PATH is None:
+    raise ValueError("DB_PATH must be specified")
+
+EXT_DB_PATH = os.getenv("EXT_DB_PATH")
+if EXT_DB_PATH is None:
+    raise ValueError("EXT_DB_PATH must be specified")
 
 QUERY = os.getenv("QUERY")
+if QUERY is None:
+    raise ValueError("QUERY must be specified")
 
 SEED = os.getenv("SEED")
+if SEED is None:
+    raise ValueError("SEED must be specified")
+
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
@@ -72,7 +87,7 @@ class Plan(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="The plan to solve the task")
     reasoning: str = dspy.OutputField(
-        desc="Concise explanation of the decision in 50 words"
+        desc="Concise explanation of the output in 50 words"
     )
 
 
@@ -84,7 +99,7 @@ class Tune(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
     answer: str = dspy.OutputField(desc="The new questions")
     reasoning: str = dspy.OutputField(
-        desc="Concise explanation of the decision in 50 words"
+        desc="Concise explanation of the output in 50 words"
     )
 
 
@@ -94,8 +109,8 @@ tune = dspy.Predict(Tune)
 
 class Decide(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
-    next_decision: Literal["researcher", "reflector", "expert", "end"] = dspy.OutputField(
-        desc="The next step to take"
+    next_decision: Literal["researcher", "reflector", "expert", "end"] = (
+        dspy.OutputField(desc="The next step to take")
     )
     reasoning: str = dspy.OutputField(
         desc="Concise explanation of the decision in 50 words"
@@ -108,7 +123,9 @@ supervise = dspy.Predict(Decide)
 
 class End(dspy.Signature):
     question: list[BaseMessage] = dspy.InputField()
-    answer: str = dspy.OutputField(desc="Detailed and comprehensive final feedback combining all AI outputs in the list of exchanged messages")
+    answer: str = dspy.OutputField(
+        desc="Detailed and comprehensive final feedback combining all AI outputs in the list of exchanged messages"
+    )
 
 
 # Module to wrap up
@@ -116,10 +133,12 @@ end = dspy.Predict(End)
 
 
 class Extract(dspy.Signature):
-    background: list[BaseMessage] = dspy.InputField()
-    answer: str = dspy.OutputField(desc="The answer to the question")
+    plan: list[BaseMessage] = dspy.InputField()
+    solution: str = dspy.OutputField(
+        desc="Detailed results of plan execution"
+    )
     reasoning: str = dspy.OutputField(
-        desc="Concise explanation of the decision in 50 words"
+        desc="Concise explanation of the output in 50 words"
     )
 
 

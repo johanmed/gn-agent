@@ -10,14 +10,11 @@ import asyncio
 import json
 import logging
 import os
-import sys
 import time
 import uuid
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from copy import deepcopy
 from dataclasses import dataclass, field
-from glob import glob
 from pathlib import Path
 from typing import Any, Literal
 
@@ -32,7 +29,6 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.message import add_messages
 from pydantic import BaseModel
-from rdflib import Graph
 from tqdm import tqdm
 from typing_extensions import Annotated, TypedDict
 
@@ -78,10 +74,9 @@ class GNAgent:
     Represents GeneNetwork Agent
     Encapsulates all functionalities of the system
     Takes:
-         Paths of corpuses and database
+         Paths of corpuses and databases
          All actors prompts
          Default parameters:
-             chat_id: identifier of conversation thread
              max_global_visits: maximum number of redirections allowed to prevent infinite looping
     Executes operations:
          Document processing (including naturalization) if not yet done
@@ -94,6 +89,7 @@ class GNAgent:
     corpus_path: str
     pcorpus_path: str
     db_path: str
+    ext_db_path: str
     naturalize_prompt: Any
     rephrase_prompt: Any
     analyze_prompt: Any
@@ -108,26 +104,28 @@ class GNAgent:
     refl_prompt: Any
     expert_prompt: Any
     max_global_visits: int = 10
-    chroma_db: Any = field(init=False)
+    int_db: Any = field(init=False)
+    ext_db: Any = field(init=False)
     docs: list = field(init=False)
     ensemble_retriever: Any = field(init=False)
+    ext_retriever: Any = field(init=False)
     memory: Any = field(init=False)
     subgraph: Any = field(init=False)
 
     def __post_init__(self):
 
         # Process or load documents
-        if not Path(self.pcorpus_path).exists():  # first time execution
+        if not Path(self.pcorpus_path).exists():  # first time readout of corpus
             self.docs = self.corpus_to_docs(self.corpus_path)
             with open(self.pcorpus_path, "w") as file:
                 file.write(json.dumps(self.docs))
-        else:  # subsequent executions
+        else:
             with open(self.pcorpus_path) as file:
                 data = file.read()
                 self.docs = json.loads(data)
 
         # Create or get embedding database
-        self.chroma_db = self.set_chroma_db(
+        self.int_db = self.set_chroma_db(
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
@@ -145,7 +143,7 @@ class GNAgent:
         )
         self.ensemble_retriever = EnsembleRetriever(
             retrievers=[
-                self.chroma_db.as_retriever(
+                self.int_db.as_retriever(
                     search_kwargs={"k": 10}
                 ),  # might need finetuning
                 bm25_retriever,
@@ -153,6 +151,22 @@ class GNAgent:
             weights=[0.7, 0.3],  # might need finetuning
             c=30,
         )
+
+        # Avail retriever leveraging model knowledge
+        self.ext_db = Chroma(
+            persist_directory=self.ext_db_path,
+            embedding_function=HuggingFaceEmbeddings(
+                model_name=EMBED_MODEL,
+                model_kwargs={"trust_remote_code": True, "device": "cpu"},
+            ),
+            client_settings=Settings(
+                is_persistent=True,
+                persist_directory=self.ext_db_path,
+                anonymized_telemetry=False,
+            ),
+        )
+        self.ext_retriever = self.ext_db.as_retriever(search_kwargs={"k": 3})
+
         self.memory = MemorySaver()
         self.subgraph = self.initialize_subgraph()
 
@@ -175,7 +189,7 @@ class GNAgent:
         logging.info("In corpus_to_docs")
 
         if not Path(corpus_path).exists():
-            sys.exit(1)
+            raise ValueError("corpus_path is not a valid path")
 
         # Read documents from a single file in corpus path
         with open(f"{corpus_path}aggr_rdf.txt") as f:
@@ -241,7 +255,6 @@ class GNAgent:
 
         logging.info("In set_chroma_db")
 
-        db_path = str(db_path)
         settings = Settings(
             is_persistent=True,
             persist_directory=db_path,
@@ -257,8 +270,8 @@ class GNAgent:
             return db
         else:
             db = Chroma(
-                embedding_function=embed_model,
                 persist_directory=db_path,
+                embedding_function=embed_model,
                 client_settings=settings,
             )
             for i in tqdm(range(0, len(docs), chunk_size)):
@@ -327,9 +340,11 @@ class GNAgent:
 
         logging.info(f"Input in retriever: {state['input_text']}")
 
-        retrieved_docs = self.ensemble_retriever.invoke(
-            state["input_text"]
-        ) + state.get("context", [])
+        retrieved_docs = (
+            self.ensemble_retriever.invoke(state["input_text"])
+            + self.ext_retriever.invoke(state["input_text"])
+            + state.get("context", [])
+        )
 
         # logging.info(f"Retrieved docs in retrieve: {retrieved_docs}")
 
@@ -606,9 +621,9 @@ class GNAgent:
 
         logging.info("Researching")
         if len(state.messages) < 3:  # handle first call to researcher
-            input_text = state.messages[0]
+            input_text = state.messages[0]  # use original query
         else:
-            input_text = state.messages[-1]
+            input_text = state.messages[-1]  # use reflection insights
         input_text = input_text.content
         logging.info(f"Input in researcher: {input_text}")
         result = self.manage_subtasks(input_text)
@@ -630,14 +645,25 @@ class GNAgent:
 
         logging.info("Expert extracting knowledge")
         if len(state.messages) < 4:  # handle first call to expert
-            input_text = state.messages[1]
+            input_text = state.messages[1]  # use original plan
         else:
-            input_text = state.messages[-2]
+            input_text = state.messages[-2]  # use reflection insights
+
+        previous = state.messages[-1].content  # improve on researcher feedback
         input_text = [self.expert_prompt, input_text]
         logging.info(f"Input in expert: {input_text}")
-        result = extract(background=input_text)
+
+        result = extract(plan=input_text)
         logging.info(f"Result from expert: {result}")
-        answer = result.get("answer")
+        answer = result.get("solution")
+
+        # Save model output in database for reuse later by researcher
+        metadata = {"source": f"New Document {self.ext_db._collection.count() + 1}"}
+        self.ext_db.add_texts(
+            texts=[answer],
+            metadatas=[metadata],
+        )
+        self.ext_db.persist()
 
         return {
             "messages": [answer],
@@ -780,6 +806,7 @@ async def main(query: str) -> str:
         corpus_path=CORPUS_PATH,
         pcorpus_path=PCORPUS_PATH,
         db_path=DB_PATH,
+        ext_db_path=EXT_DB_PATH,
         naturalize_prompt=naturalize_prompt,
         rephrase_prompt=rephrase_prompt,
         analyze_prompt=analyze_prompt,

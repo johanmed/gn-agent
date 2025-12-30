@@ -34,6 +34,7 @@ optimized_agent = GNAgent(
     corpus_path=optimized_config["corpus_path"],
     pcorpus_path=optimized_config["pcorpus_path"],
     db_path=optimized_config["db_path"],
+    ext_db_path=optimized_config["ext_db_path"],
     naturalize_prompt=optimized_config["prompts"]["naturalize_prompt"],
     rephrase_prompt=optimized_config["prompts"]["rephrase_prompt"],
     analyze_prompt=optimized_config["prompts"]["analyze_prompt"],
