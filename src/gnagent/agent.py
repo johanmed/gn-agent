@@ -787,7 +787,7 @@ class GNAgent:
         """
         global_result = await self.invoke_globgraph(query)
         end_prompt = global_result.get("messages")
-        end_result = end(question=end_prompt)
+        end_result = end(messages=end_prompt)
 
         first_result = global_result.get("messages")[
             2
@@ -796,7 +796,7 @@ class GNAgent:
             3
         ].content  # get first expert feedback
 
-        output = f"\nInternal feedback: {first_result}\n\nExternal feedback: {second_result}\n\nProcessed feedback: {end_result.get('answer')}"
+        output = f"\nInternal feedback: {first_result}\n\nExternal feedback: {second_result}\n\nProcessed feedback: {end_result.get('feedback')}"
 
         return output
 

@@ -122,9 +122,9 @@ supervise = dspy.Predict(Decide)
 
 
 class End(dspy.Signature):
-    question: list[BaseMessage] = dspy.InputField()
-    answer: str = dspy.OutputField(
-        desc="Detailed and comprehensive final feedback combining all AI outputs in the list of exchanged messages"
+    messages: list[BaseMessage] = dspy.InputField()
+    feedback: str = dspy.OutputField(
+        desc="Detailed and comprehensive final feedback combining all AI outputs in the list of exchanged messages and linking them when appropriate"
     )
 
 
