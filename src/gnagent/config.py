@@ -236,20 +236,24 @@ summarize_record = dspy.Tool(
 )
 
 
+class ReactSig(dspy.Signature):
+    query: list[BaseMessage] = dspy.InputField()
+    solution: str = dspy.OutputField(desc="The answer to the query")
+
+
 class React(dspy.Module):
     def __init__(self):
         super().__init__()
-        self.tools = [ncbi_search, fetch_record, summarize_record]
+        self.tools = [search_ncbi, fetch_record, summarize_record]
 
         self.react = dspy.ReAct(
-            "query: list[BaseMessage] -> solution: str",
+            signature=ReactSig,
             tools=self.tools,
-            max_iters=5,  # maximum number of steps for reasoning and tool calling
+            max_iters=50,  # maximum number of steps for reasoning and tool calling
         )
 
-    def forward(self, query: list[dspy.BaseMessage]):
-        pred = self.react(query=query)
-        return dspy.Prediction(solution=pred.answer, reasoning=pred.trajectory)
+    def forward(self, query: list[BaseMessage]):
+        return self.react(query=query)
 
 
 class Plan(dspy.Signature):
@@ -279,7 +283,7 @@ tune = dspy.Predict(Tune)
 class Decide(dspy.Signature):
     background: list[BaseMessage] = dspy.InputField()
     next_decision: Literal["researcher", "reflector", "expert", "end"] = (
-        dspy.OutputField(desc="The next step to take")
+        dspy.OutputField(desc="The next step to take based on instructions")
     )
     reasoning: str = dspy.OutputField(
         desc="Concise explanation of the decision in 50 words"

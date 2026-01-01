@@ -153,7 +153,7 @@ class GNAgent:
             c=30,
         )
 
-        # Avail retriever leveraging model knowledge
+        # Avail retriever leveraging external database (NCBI) and model
         self.ext_db = Chroma(
             persist_directory=self.ext_db_path,
             embedding_function=HuggingFaceEmbeddings(
