@@ -47,7 +47,14 @@ Entrez.email = EMAIL
 
 EMBED_MODEL = "Qwen/Qwen3-Embedding-0.6B"
 
+MODEL_NAME = os.getenv("MODEL_NAME")
+if MODEL_NAME is None:
+    raise ValueError("MODEL_NAME must be specified - either proprietary or local"
+    )
+
 MODEL_TYPE = os.getenv("MODEL_TYPE")
+if MODEL_TYPE is None:
+    raise ValueError("MODEL_TYPE must be specified")
 
 torch.manual_seed(SEED)
 
@@ -56,7 +63,7 @@ if torch.cuda.is_available():
 
 if int(MODEL_TYPE) == 0:
     GENERATIVE_MODEL = dspy.LM(
-        model="openai/Qwen/Qwen2.5-7B-Instruct",  # should match shell config
+        model=f"openai/{MODEL_NAME}",
         api_base="http://localhost:7501/v1",
         api_key="local",
         model_type="chat",
@@ -67,15 +74,9 @@ if int(MODEL_TYPE) == 0:
         verbose=False,
     )
 elif int(MODEL_TYPE) == 1:
-    MODEL_NAME = os.getenv("MODEL_NAME")
     API_KEY = os.getenv("API_KEY")
-
-    if MODEL_NAME is None:
-        raise ValueError(
-            "MODEL_NAME must be specified for proprietary models per DSPy guidelines"
-        )
-    elif API_KEY is None:
-        raise ValueError("Valid API_KEY must be specified to use proprietary models")
+    if API_KEY is None:
+        raise ValueError("Valid API_KEY must be specified to use the proprietary model")
     GENERATIVE_MODEL = dspy.LM(
         MODEL_NAME,
         api_key=API_KEY,
