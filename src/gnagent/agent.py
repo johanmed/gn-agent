@@ -646,7 +646,7 @@ class GNAgent:
 
         logging.info("Expert extracting knowledge")
         if len(state.messages) < 4:  # handle first call to expert
-            input_text = state.messages[1]  # use plan
+            input_text = state.messages[1] + state.messages[0] # use plan and query
         else:
             input_text = state.messages[-2]  # use reflection insights
 
