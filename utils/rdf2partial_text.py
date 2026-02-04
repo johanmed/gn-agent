@@ -3,12 +3,13 @@ import os
 import string
 from copy import copy
 
-dir = "/home/johannesm/all_corpus/"
+dir = os.getenv("DIR")
+if dir is None:
+    raise ValueError("DIR not specified")
 
 collection = {}
 
-files = [os.path.join(dir, file) for file in os.listdir(dir)]
-
+files = [os.path.join(dir, file) for file in os.listdir(dir) if 'ttl' in file]
 
 def clean(text) -> str:
     return text.strip(string.punctuation).strip()
