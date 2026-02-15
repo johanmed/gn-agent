@@ -594,11 +594,11 @@ class GNAgent:
         subqueries = self.split_query(query)
 
         answers = []
-        for id, subquery in enumerate(subqueries):
+        for ind, subquery in enumerate(subqueries):
             answer = self.run_subtask(subquery, research_thread_id)
             if isinstance(answer, Exception):
                 answers.append(
-                    f"Error in subquery {subqueries[id]}: \
+                    f"Error in subquery {subqueries[ind]}: \
                     {str(answer)}"
                 )
             else:
