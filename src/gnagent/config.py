@@ -17,19 +17,19 @@ from langchain_core.messages import BaseMessage
 
 CORPUS_PATH = os.getenv("CORPUS_PATH")
 if CORPUS_PATH is None:
-    raise ValueError("CORPUS_PATH must be specified to find corpus")
+    raise FileNotFoundError("CORPUS_PATH must be specified to find corpus")
 
 PCORPUS_PATH = os.getenv("PCORPUS_PATH")
 if PCORPUS_PATH is None:
-    raise ValueError("PCORPUS_PATH must be specified to read corpus")
+    raise FileNotFoundError("PCORPUS_PATH must be specified to read corpus")
 
 DB_PATH = os.getenv("DB_PATH")
 if DB_PATH is None:
-    raise ValueError("DB_PATH must be specified to access database")
+    raise FileNotFoundError("DB_PATH must be specified to access database")
 
 EXT_DB_PATH = os.getenv("EXT_DB_PATH")
 if EXT_DB_PATH is None:
-    raise ValueError("EXT_DB_PATH must be specified to save new data")
+    raise FileNotFoundError("EXT_DB_PATH must be specified to save new data")
 
 QUERY = os.getenv("QUERY")
 if QUERY is None:
