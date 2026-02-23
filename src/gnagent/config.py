@@ -4,9 +4,7 @@ It provides different constructs to interact with the LLM
 Embedding model = Qwen/Qwen3-Embedding-0.6B
 """
 
-import logging
 import os
-import warnings
 from typing import Any, Literal
 
 import dspy
