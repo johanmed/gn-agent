@@ -1,26 +1,33 @@
-"""
-This script optimizes prompts of GeneNetwork Agent using GEPA
-"""
+"""This module optimizes user prompt of a specific task using GEPA"""
 
-import copy
-import json
+import logging
+import random
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
+import pandas as pd
 from dspy import GEPA
 
-from all_config import *
-from gnagent_adapter import GNAgentAdapter, config
+from adapter import dspy_agent
+from config2 import REFLECTION_MODEL, smart_assesser
+
+logging.basicConfig(
+    filename="log_optimization.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+)
 
 
 def get_dataset(
     example_path: str,
     split_ratio: int = 0.7,
-    column_names: list[str] = ["query", "prompt_output", "prompt_text", "reasoning"],
+    column_names: list[str] = ["query", "answer", "reasoning"],
 ) -> Any:
     data = pd.read_csv(
-        example_path, names=column_names,
+        example_path,
+        names=column_names,
     )
     data_dicts = data[column_names].to_dict(orient="records")
 
@@ -63,17 +70,17 @@ def extract_best_prompt(reflection_lm) -> str:
 @dataclass
 class Optimization:
     """
-    Wraps GEPA optimization of any dspy module using a reflection model
+    Wraps GEPA optimization of user prompt using a reflection model
     """
 
-    module: Any
+    program: Any
     metric: Any
-    input_path: str
+    example_path: str
     train_set: list[dspy.Example] = field(init=False)
     val_set: list[dspy.Example] = field(init=False)
 
     def __post_init__(self):
-        train_set, val_set, test_set = get_dataset(self.input_path)
+        train_set, val_set, test_set = get_dataset(self.example_path)
         val_set = val_set + test_set
         self.train_set = train_set
         self.val_set = val_set
@@ -87,43 +94,29 @@ class Optimization:
             reflection_lm=REFLECTION_MODEL,
             seed=2025,
         )
-        optimized_module = optimizer.compile(
-            self.module,
+        optimized_program = optimizer.compile(
+            self.program,
             trainset=self.train_set,
             valset=self.val_set,
         )
 
-        return optimized_module
+        return optimized_program
 
 
 if __name__ == "__main__":
-    if not Path("optimized_config.json").exists():
-        adapter = GNAgentAdapter(config)
-        optimized_prompts: Dict[str, str] = {}
-
-        for name, predictor in adapter.named_predictors():
-            REFLECTION_MODEL.history = []
-            original = copy.deepcopy(predictor.signature)
-            pred = dspy.Predict(original)
-
-            input_path = f"examples/{name}.csv"
-            if Path(input_path).exists():
-                logging.info(f"Proceeding to optimization for {name}")
-                module_run = Optimization(
-                    module=pred,
-                    metric=match_checker_feedback,
-                    input_path=input_path,
-                )
-                optimized_predictor = module_run.optimize()
-                best_prompt = extract_best_prompt(REFLECTION_MODEL)
-                optimized_prompts[name] = best_prompt.strip()
-            else:
-                logging.warning(f"No examples for {name}???")
-
-        new_config = copy.deepcopy(config)
-        new_config["prompts"].update(optimized_prompts)
-        with open("optimized_config.json", "w") as f:
-            f.write(json.dumps(new_config))
-        logging.info("Optimization complete and prompts saved!")
+    task = input("Genomic task to optimize for: ")
+    example_path = f"examples/{task}/original.csv"
+    prompt_path = f"prompts2/{task}.py"
+    if not Path(prompt_path).exists():
+        program = Optimization(
+            program=dspy_agent,
+            metric=smart_assesser,
+            example_path=example_path,
+        )
+        optimized_program = program.optimize()
+        best_prompt = extract_best_prompt(REFLECTION_MODEL)
+        with open(prompt_path) as f:
+            f.write(best_prompt)
+        logging.info("Optimization completed and user prompt saved for the task!")
     else:
-        logging.warning("GNAgent already optimized!")
+        logging.warning("User prompt for the task already optimized!")

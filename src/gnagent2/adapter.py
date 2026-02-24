@@ -1,40 +1,18 @@
-"""
-This modules creates an adapter that wraps existing GNAgent instance and exposes a serializable config for GEPA
-"""
+"""This modules creates an adapter that wraps existing GNAgent instance and exposes it as a dspy module for GEPA"""
 
 import asyncio
 import copy
-import json
-import logging
+import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import dspy
-from langchain_core.messages import SystemMessage
+from gnagent.agent import GNAgent
 
-from all_config import *
+from config2 import *
 
-PROMPT_NAMES = [
-    "naturalize_prompt",
-    "rephrase_prompt",
-    "analyze_prompt",
-    "check_prompt",
-    "summarize_prompt",
-    "synthesize_prompt",
-    "split_prompt",
-    "finalize_prompt",
-    "sup_prompt1",
-    "sup_prompt2",
-    "plan_prompt",
-    "refl_prompt",
-    "expert_prompt",
-]
-
-
-class PromptSig(dspy.Signature):
-    query: str = dspy.InputField()
-    prompt_output: str = dspy.OutputField()
+warnings.filterwarnings("ignore")
 
 
 class GNAgentFullSig(dspy.Signature):
@@ -47,33 +25,33 @@ class GNAgentAdapter(dspy.Module):
         super().__init__()
         self.config = agent_config
         self.executor = ThreadPoolExecutor(max_workers=1)
-
-        self._predictors = {}
-        for name in PROMPT_NAMES:
-            pred = dspy.Predict(PromptSig)
-            pred.prompt_text = agent_config["prompts"].get(name, "")
-            self._predictors[name] = pred
-            setattr(self, name, pred)
-
-        self.full = dspy.Predict(GNAgentFullSig)
+        pred = dspy.Predict(GNAgentFullSig)
+        pred.prompt = "You are performing a genomic task. Make sure to explore as many possibilities as possible."
+        self._predictors = {"general_prompt": pred}
 
     def _build_agent(self):
-        base = {k: v for k, v in self.config.items() if k != "prompts"}
-        valid_keys = {*PROMPT_NAMES, "corpus_path", "pcorpus_path", "db_path"}
+        base = {k: v for k, v in self.config.items()}
+        valid_keys = {
+            "naturalize_prompt",
+            "rephrase_prompt",
+            "analyze_prompt",
+            "check_prompt",
+            "summarize_prompt",
+            "synthesize_prompt",
+            "split_prompt",
+            "finalize_prompt",
+            "sup_prompt1",
+            "sup_prompt2",
+            "plan_prompt",
+            "refl_prompt",
+            "expert_prompt",
+            "corpus_path",
+            "pcorpus_path",
+            "db_path",
+            "ext_db_path",
+        }
         base = {k: v for k, v in base.items() if k in valid_keys}
-        for k in {"corpus_path", "pcorpus_path", "db_path"}:
-            if k in base and isinstance(base[k], str):
-                base[k] = Path(base[k])
-
-        prompts = {}
-        for name in PROMPT_NAMES:
-            pred = self._predictors[name]
-            text = getattr(pred, "prompt_text", "")
-            prompts[name] = SystemMessage(content=text)
-
-        if hasattr(self, "_embedder"):
-            base["embedder"] = self._embedder
-        return GNAgent(**base, **prompts)
+        return GNAgent(**base)
 
     @staticmethod
     def _run_handler(agent, query: str):
@@ -82,7 +60,6 @@ class GNAgentAdapter(dspy.Module):
     def forward(self, query: str) -> dspy.Prediction:
         agent = self._build_agent()
         answer = self.executor.submit(self._run_handler, agent, query).result()
-        logging.info(f"System feedback: {answer}")
         return self.full(query=query, answer=str(answer))
 
     def __call__(self, *args, **kwargs):
@@ -105,29 +82,35 @@ class GNAgentAdapter(dspy.Module):
             new._predictors[name] = new_pred
             setattr(new, name, new_pred)
         new.executor = ThreadPoolExecutor(max_workers=1)
-        new.full = copy.deepcopy(self.full)
         return new
 
 
 def extract_config(agent) -> Dict[str, Any]:
     """Convert GNAgent to JSON-serialisable dict"""
     config: Dict[str, Any] = {}
-    prompt_names = set(PROMPT_NAMES)
-
-    allowed_fields = {"corpus_path", "pcorpus_path", "db_path"}
+    allowed_fields = {
+        "naturalize_prompt",
+        "rephrase_prompt",
+        "analyze_prompt",
+        "check_prompt",
+        "summarize_prompt",
+        "synthesize_prompt",
+        "split_prompt",
+        "finalize_prompt",
+        "sup_prompt1",
+        "sup_prompt2",
+        "plan_prompt",
+        "refl_prompt",
+        "expert_prompt",
+        "corpus_path",
+        "pcorpus_path",
+        "db_path",
+        "ext_db_path",
+    }
     for k, v in agent.__dict__.items():
-        if k not in allowed_fields or k in prompt_names:
+        if k not in allowed_fields:
             continue
-        config[k] = str(v) if isinstance(v, Path) else v
-
-    config["prompts"] = {}
-    for name in PROMPT_NAMES:
-        obj = getattr(agent, name, None)
-        if obj is not None:
-            if isinstance(obj, SystemMessage):
-                config["prompts"][name] = obj.content
-            else:
-                config["prompts"][name] = str(obj)
+        config[k] = v
 
     return config
 
@@ -152,3 +135,5 @@ agent = GNAgent(
     expert_prompt=expert_prompt,
 )
 config = extract_config(agent)
+
+dspy_agent = GNAgentAdapter(config)

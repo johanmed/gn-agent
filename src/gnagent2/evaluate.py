@@ -1,55 +1,39 @@
-"""
-This script compares performance of GeneNetwork Agent before and after prompt optimization
-"""
+"""This module compares performance of GeneNetwork Agent on a specific task before and after user prompt optimization"""
 
-import json
+import logging
 
-from all_config import *
-from gnagent_adapter import GNAgentAdapter, config, extract_config
-from optimize_program import get_dataset
+import dspy
 
-train_set, val_set, test_set = get_dataset(
-    "examples/general.csv", column_names=["query", "answer", "reasoning"]
-)
+from adapter import dspy_agent
+from optimize import get_dataset
 
-evaluate = dspy.Evaluate(
-    devset=test_set,
-    metric=match_checker,
-    num_threads=1,
-    display_table=False,
-    display_progress=True,
-    lm=GENERATIVE_MODEL,
+logging.basicConfig(
+    filename="log_evaluation.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
 )
 
 
-original_agent = GNAgentAdapter(config)
-original_result = evaluate(original_agent)
+def assess_performance(example_path: str) -> dspy.EvaluationResult:
+    train_set, val_set, test_set = get_dataset(
+        example_path, column_names=["query", "answer", "reasoning"]
+    )
+    evaluate = dspy.Evaluate(
+        devset=test_set,
+        metric=assesser,
+        num_threads=1,
+        display_table=False,
+        display_progress=True,
+        lm=GENERATIVE_MODEL,
+    )
+    return evaluate(dspy_agent).get("results")
 
 
-with open("optimized_config.json") as f:
-    read = f.read()
-    optimized_config = json.loads(read)
+task = input("Genomic task to perform: ")
+original = assess_performance(f"examples/{task}/original.csv")
+optimized = assess_performance(f"examples/{task}/optimized.csv")
 
-optimized_agent = GNAgent(
-    corpus_path=optimized_config["corpus_path"],
-    pcorpus_path=optimized_config["pcorpus_path"],
-    db_path=optimized_config["db_path"],
-    ext_db_path=optimized_config["ext_db_path"],
-    naturalize_prompt=optimized_config["prompts"]["naturalize_prompt"],
-    rephrase_prompt=optimized_config["prompts"]["rephrase_prompt"],
-    analyze_prompt=optimized_config["prompts"]["analyze_prompt"],
-    check_prompt=optimized_config["prompts"]["check_prompt"],
-    summarize_prompt=optimized_config["prompts"]["summarize_prompt"],
-    synthesize_prompt=optimized_config["prompts"]["synthesize_prompt"],
-    split_prompt=optimized_config["prompts"]["split_prompt"],
-    finalize_prompt=optimized_config["prompts"]["finalize_prompt"],
-    sup_prompt1=optimized_config["prompts"]["sup_prompt1"],
-    sup_prompt2=optimized_config["prompts"]["sup_prompt2"],
-    plan_prompt=optimized_config["prompts"]["plan_prompt"],
-    refl_prompt=optimized_config["prompts"]["refl_prompt"],
-    expert_prompt=optimized_config["prompts"]["expert_prompt"],
+logging.info(
+    f"The performance before optimization:\n{original}\n\nThe performance after optimization:\n{optimized}"
 )
-final_config = extract_config(optimized_agent)
-final_agent = GNAgentAdapter(final_config)
-
-optimized_result = evaluate(final_agent)
