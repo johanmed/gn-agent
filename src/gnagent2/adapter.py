@@ -26,6 +26,7 @@ class GNAgentAdapter(dspy.Module):
         self.config = agent_config
         self.executor = ThreadPoolExecutor(max_workers=1)
         pred = dspy.Predict(GNAgentFullSig)
+        self.general = pred
         pred.prompt = "You are performing a genomic task. Make sure to explore as many possibilities as possible."
         self._predictors = {"general_prompt": pred}
 
@@ -60,7 +61,7 @@ class GNAgentAdapter(dspy.Module):
     def forward(self, query: str) -> dspy.Prediction:
         agent = self._build_agent()
         answer = self.executor.submit(self._run_handler, agent, query).result()
-        return self.full(query=query, answer=str(answer))
+        return self.general(query=query, answer=str(answer))
 
     def __call__(self, *args, **kwargs):
         if args and isinstance(args[0], dspy.Example):

@@ -1,8 +1,16 @@
 """This module addresses better a query related to a specific task with GNAgent"""
 
+import logging
 from pathlib import Path
 
 from adapter import QUERY, dspy_agent
+
+logging.basicConfig(
+    filename="log_agent2.txt",
+    filemode="w",
+    level=logging.INFO,
+    format="%(asctime)s %(message)s",
+)
 
 task = input("Genomic task to perform: ")
 prompt_path = f"prompts2/{task}.py"
@@ -28,9 +36,9 @@ if Path(prompt_path).exists():
             to_write = f"'{formatted_prompt}','{formatted_output}'\n"
             a.write(to_write)
 else:
+    logging.warning("Using user supplied prompt...")
     output = dspy_agent(query=QUERY)
     output = output.get("answer")
-    logging.warning("Using user supplied prompt...")
     logging.info(f"System feedback: {output}")
     # Save queries and answer for reuse
     with open(f"{example_path}/original.csv", "a") as a:
