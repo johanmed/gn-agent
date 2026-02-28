@@ -6,11 +6,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+import dspy
 import pandas as pd
 from dspy import GEPA
 
 from adapter import dspy_agent
-from config2 import REFLECTION_MODEL, smart_assesser
+from config2 import *
 
 logging.basicConfig(
     filename="log_optimization.txt",
@@ -23,7 +24,7 @@ logging.basicConfig(
 def get_dataset(
     example_path: str,
     split_ratio: int = 0.7,
-    column_names: list[str] = ["query", "answer", "reasoning"],
+    column_names: list[str] = ["query", "answer"],
 ) -> Any:
     data = pd.read_csv(
         example_path,
@@ -88,8 +89,8 @@ class Optimization:
     def optimize(self) -> Any:
         optimizer = GEPA(
             metric=self.metric,
-            auto="light",
-            num_threads=6,
+            max_metric_calls=10,
+            num_threads=1,
             track_stats=True,
             reflection_lm=REFLECTION_MODEL,
             seed=2025,

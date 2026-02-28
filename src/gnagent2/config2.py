@@ -4,6 +4,7 @@ import dspy
 from gnagent.config import *
 from gnagent.prompts import *
 
+API_KEY = os.getenv("API_KEY")
 if API_KEY is None:
     raise ValueError(
         "Valid API_KEY must be specified to use the proprietary model for reflection"
@@ -12,7 +13,7 @@ if API_KEY is None:
 REFLECTION_MODEL = dspy.LM(
     "anthropic/claude-sonnet-4-5-20250929",
     api_key=API_KEY,
-    max_tokens=5_000,
+    max_tokens=10_000,
     temperature=0,
     verbose=False,
 )
@@ -29,12 +30,9 @@ class Assessment(dspy.Signature):
 assess = dspy.Predict(Assessment)
 
 
-def score(
+def score_answer(
     query: str,
     response: str,
-    trace=None,
-    pred_name=None,
-    pred_trace=None,
 ) -> float:
 
     context = f"User query: {query}\nAI answer: {response}"
@@ -46,28 +44,37 @@ def score(
     accuracy_feedback = assess(question=accuracy_question)
 
     score = (relevance_feedback.get("score") + accuracy_feedback.get("score")) / 2
-    logging.info(f"Final assessment score: {score}")
 
     return score
 
 
-def assesser(example: dspy.Example) -> int:
-    query = example["query"]
-    response = example["answer"]
-    score = score(query, response)
-    return 1 if score >= 0.7 else 0
+def assesser(
+    gold: dspy.Example,
+    pred=None,
+    trace=None,
+    pred_name=None,
+    pred_trace=None,
+) -> int:
+    query = gold["query"]
+    response = gold["answer"]
+    score = score_answer(query, response)
+    return 1 if score >= 0.95 else 0
 
 
 def smart_assesser(
-    example: dspy.Example, prediction: dspy.Prediction
+    gold: dspy.Example,
+    pred=None,
+    trace=None,
+    pred_name=None,
+    pred_trace=None,
 ) -> dspy.Prediction:
-    query = example["query"]
-    response = example["answer"]
-    score = score(query, response)
+    query = gold["query"]
+    response = gold["answer"]
+    score = score_answer(query, response)
 
     smart_feedback = ""
     new_score = 0
-    if score >= 0.7:
+    if score >= 0.95:
         new_score = 1
         smart_feedback += (
             f"Your answer is satisfactory. You should keep doing this good."

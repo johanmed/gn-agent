@@ -19,8 +19,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from chromadb.config import Settings
-from langchain.retrievers.ensemble import EnsembleRetriever
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_classic.retrievers import EnsembleRetriever
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
@@ -37,13 +37,6 @@ from gnagent.config import *
 from gnagent.prompts import *
 
 warnings.filterwarnings("ignore")
-
-logging.basicConfig(
-    filename="log_agent.txt",
-    filemode="w",
-    level=logging.INFO,
-    format="%(asctime)s %(message)s",
-)
 
 
 class AgentState(BaseModel):
@@ -130,8 +123,10 @@ class GNAgent:
             docs=self.docs,
             embed_model=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
-                model_kwargs={"trust_remote_code": True, "device": "cpu"},
-            ),  # could use gpu instead of cpu with more RAM
+                model_kwargs={"trust_remote_code": True,
+                              "device": "cpu",
+                              },
+            ),
             db_path=self.db_path,
         )
 
@@ -158,7 +153,9 @@ class GNAgent:
             persist_directory=self.ext_db_path,
             embedding_function=HuggingFaceEmbeddings(
                 model_name=EMBED_MODEL,
-                model_kwargs={"trust_remote_code": True, "device": "cpu"},
+                model_kwargs={"trust_remote_code": True,
+                              "device": "cpu",
+                            },
             ),
             client_settings=Settings(
                 is_persistent=True,
@@ -831,4 +828,10 @@ async def main(query: str) -> str:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(
+        filename="log_agent.txt",
+        filemode="w",
+        level=logging.INFO,
+        format="%(asctime)s %(message)s",
+    )
     asyncio.run(main(QUERY))

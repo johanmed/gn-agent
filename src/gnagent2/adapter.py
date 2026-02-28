@@ -9,6 +9,7 @@ from typing import Any, Dict
 
 import dspy
 from gnagent.agent import GNAgent
+from langchain_core.messages import SystemMessage
 
 from config2 import *
 
@@ -31,7 +32,6 @@ class GNAgentAdapter(dspy.Module):
         self._predictors = {"general_prompt": pred}
 
     def _build_agent(self):
-        base = {k: v for k, v in self.config.items()}
         valid_keys = {
             "naturalize_prompt",
             "rephrase_prompt",
@@ -51,8 +51,16 @@ class GNAgentAdapter(dspy.Module):
             "db_path",
             "ext_db_path",
         }
+        base = {k: v for k, v in self.config.items() if k != "prompts"}
         base = {k: v for k, v in base.items() if k in valid_keys}
-        return GNAgent(**base)
+        prompts = {}
+        for name in valid_keys:
+            if "prompt" in name:
+                prompts[name] = SystemMessage(
+                    content=self.config["prompts"].get(name, "")
+                )
+
+        return GNAgent(**base, **prompts)
 
     @staticmethod
     def _run_handler(agent, query: str):
@@ -83,12 +91,14 @@ class GNAgentAdapter(dspy.Module):
             new._predictors[name] = new_pred
             setattr(new, name, new_pred)
         new.executor = ThreadPoolExecutor(max_workers=1)
+        new.general = copy.deepcopy(self.general)
         return new
 
 
 def extract_config(agent) -> Dict[str, Any]:
     """Convert GNAgent to JSON-serialisable dict"""
     config: Dict[str, Any] = {}
+    config["prompts"] = {}
     allowed_fields = {
         "naturalize_prompt",
         "rephrase_prompt",
@@ -111,7 +121,10 @@ def extract_config(agent) -> Dict[str, Any]:
     for k, v in agent.__dict__.items():
         if k not in allowed_fields:
             continue
-        config[k] = v
+        if isinstance(v, SystemMessage):
+            config["prompts"][k] = v.content
+        else:
+            config[k] = v
 
     return config
 
