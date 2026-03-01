@@ -6,14 +6,14 @@ from pathlib import Path
 from adapter import QUERY, dspy_agent
 
 logging.basicConfig(
-    filename="log_agent2.txt",
+    filename="log_optagent.txt",
     filemode="w",
     level=logging.INFO,
     format="%(asctime)s %(message)s",
 )
 
 task = input("Genomic task to perform: ")
-prompt_path = f"prompts2/{task}.py"
+prompt_path = f"prompts/{task}.py"
 example_path = f"examples/{task}"
 
 if Path(prompt_path).exists():

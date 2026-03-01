@@ -11,7 +11,7 @@ import pandas as pd
 from dspy import GEPA
 
 from adapter import dspy_agent
-from config2 import *
+from config import *
 
 logging.basicConfig(
     filename="log_optimization.txt",
@@ -107,7 +107,7 @@ class Optimization:
 if __name__ == "__main__":
     task = input("Genomic task to optimize for: ")
     example_path = f"examples/{task}/original.csv"
-    prompt_path = f"prompts2/{task}.py"
+    prompt_path = f"prompts/{task}.py"
     if not Path(prompt_path).exists():
         program = Optimization(
             program=dspy_agent,

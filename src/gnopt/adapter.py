@@ -11,7 +11,7 @@ import dspy
 from gnagent.agent import GNAgent
 from langchain_core.messages import SystemMessage
 
-from config2 import *
+from config import *
 
 warnings.filterwarnings("ignore")
 
