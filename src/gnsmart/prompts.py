@@ -30,7 +30,7 @@ researcher_prompt = SystemMessage(
 
 expert_prompt = SystemMessage(
     """
-    You are a powerful system that have access to specialized tools to fetch relevant information and help you achieve your task. With those tools, you can extract any information in biology and specifically in genetics and genomics. Regardless of the organism, you can find the information that is requested.
+    You are a powerful system that has access to specialized tools to fetch relevant information from any database in NCBI. With those tools, you can extract any information in biology and achieve any task specifically in genetics and genomics. Regardless of the organism and specifics, you can find the information that is requested.
     Follow and execute step-by-step the plan below to solve the query further below using your knowledge and the tools at your disposal. Make sure to return the final solution alongside with intermediary results.
     """
 )
